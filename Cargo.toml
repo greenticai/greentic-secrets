@@ -29,9 +29,9 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.90"
 license = "MIT"
-version = "0.4.17"
+version = "0.4.18"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -78,12 +78,12 @@ tower = "0.5"
 tower-http = "0.6"
 tracing = "0.1"
 predicates = "3"
-azure_identity = { package = "azure_identity", version = "0.30" }
-azure_security_keyvault_secrets = { package = "azure_security_keyvault_secrets", version = "0.9" }
-azure_core = "0.30.1"
+azure_identity = { package = "azure_identity", version = "0.31" }
+azure_security_keyvault_secrets = { package = "azure_security_keyvault_secrets", version = "0.10" }
+azure_core = "0.31"
 google-cloud-secretmanager-v1 = "1"
-k8s-openapi = { version = "0.26.1", default-features = false, features = ["v1_31"] }
-kube = { version = "2.0", default-features = false, features = ["client", "runtime", "derive", "rustls-tls"] }
+k8s-openapi = { version = "0.27", default-features = false, features = ["v1_31"] }
+kube = { version = "3", default-features = false, features = ["client", "runtime", "derive", "rustls-tls"] }
 rustls-pemfile = "2"
 vaultrs = { version = "0.7", default-features = false, features = ["rustls"] }
 secrets-provider-inmemory = { version = "0.1", path = "components/secrets-provider-inmemory" }
@@ -91,12 +91,14 @@ greentic-types = { version = "0.4", features = ["telemetry-autoinit"] }
 url = "2"
 uuid = "1"
 wit-bindgen = "0.51"
-wasmtime = { version = "40", features = ["cranelift"] }
+wasmtime = { version = "41", features = ["cranelift"] }
+wasmparser = { version = "0.244.0", default-features = false, features = ["component-model"] }
 wat = "1"
 greentic_secrets_api = { package = "greentic-secrets-api", version = "0.4", path = "greentic-secrets-api" }
 greentic_secrets_spec = { package = "greentic-secrets-spec", version = "0.4", path = "greentic-secrets-spec" }
 greentic_secrets_core = { package = "greentic-secrets-core", version = "0.4", path = "greentic-secrets-core" }
 greentic_secrets_broker = { package = "greentic-secrets-broker", version = "0.4", path = "greentic-secrets-broker" }
+secrets_broker = { package = "greentic-secrets-broker", version = "0.4", path = "greentic-secrets-broker" }
 greentic_secrets_lib = { package = "greentic-secrets-lib", version = "0.4", path = "greentic-secrets-lib" }
 greentic_secrets_provider_dev = { package = "greentic-secrets-provider-dev", version = "0.4", path = "providers/greentic-dev" }
 greentic_secrets_provider_aws_sm = { package = "greentic-secrets-provider-aws-sm", version = "0.4", path = "providers/greentic-aws-sm" }
@@ -120,3 +122,6 @@ secrets-provider-tests = { path = "crates/secrets-provider-tests" }
 greentic-config-types = { version = "0.4" }
 greentic-config = { version = "0.4" }
 greentic-interfaces = { version = "0.4", default-features = false, features = ["bindings-rust", "provider-core-v1"] }
+greentic-interfaces-wasmtime = { version = "0.4" }
+greentic-component-runtime = { version = "0.4" }
+greentic-component-store = { version = "0.4" }

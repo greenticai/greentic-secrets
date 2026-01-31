@@ -74,12 +74,14 @@ mod host {
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[allow(dead_code)]
     struct SecretData {
         #[serde(flatten)]
         data: HashMap<String, String>,
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[allow(dead_code)]
     #[allow(non_snake_case)]
     struct Secret {
         apiVersion: String,
@@ -92,6 +94,7 @@ mod host {
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[allow(dead_code)]
     struct Metadata {
         name: String,
         namespace: String,

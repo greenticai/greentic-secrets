@@ -12,3 +12,4 @@
 scripts/azurekv-certs/*
 !scripts/azurekv-certs/.gitkeep
 scripts/scripts/
+.greentic/

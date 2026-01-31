@@ -18,6 +18,13 @@ if [[ -n "${LOCAL_CHECKPACKAGE:-}" && "$LOCAL_CHECK_PACKAGE" == "0" ]]; then
   LOCAL_CHECK_PACKAGE="$LOCAL_CHECKPACKAGE"
 fi
 
+if [[ "$LOCAL_CHECK_ONLINE" != "1" ]]; then
+  export CARGO_NET_OFFLINE=1
+  CARGO_OFFLINE_ARGS=(--offline)
+else
+  CARGO_OFFLINE_ARGS=()
+fi
+
 if [[ "$LOCAL_CHECK_VERBOSE" == "1" ]]; then
   set -x
 fi
@@ -187,7 +194,7 @@ fi
 
 run_clippy() {
   step "cargo clippy --workspace --all-targets -- -D warnings"
-  cargo clippy --workspace --all-targets -- -D warnings
+  cargo clippy --workspace --all-targets "${CARGO_OFFLINE_ARGS[@]}" -- -D warnings
 }
 
 if run_or_skip "cargo clippy --workspace --all-targets (requires cargo-clippy component)" ensure_tools cargo cargo-clippy; then
@@ -196,7 +203,7 @@ fi
 
 run_build() {
   step "cargo build --workspace --all-features --locked"
-  cargo build --workspace --all-features --locked
+  cargo build --workspace --all-features --locked "${CARGO_OFFLINE_ARGS[@]}"
 }
 
 if run_or_skip "cargo build --workspace --all-features --locked" ensure_tools cargo; then
@@ -205,7 +212,7 @@ fi
 
 run_tests() {
   step "cargo test --workspace --all-features --locked -- --nocapture"
-  cargo test --workspace --all-features --locked -- --nocapture
+  cargo test --workspace --all-features --locked "${CARGO_OFFLINE_ARGS[@]}" -- --nocapture
 }
 
 if run_or_skip "cargo test --workspace --all-features --locked" ensure_tools cargo; then
@@ -235,7 +242,7 @@ run_secrets_e2e() {
   step "greentic-secrets-test e2e (dry-run)"
   local out_dir="${REPO_ROOT}/dist/packs"
   OUT_DIR="${out_dir}" "${REPO_ROOT}/scripts/build-provider-packs.sh"
-  cargo run -p greentic-secrets-test -- e2e --packs "${out_dir}"
+  cargo run -p greentic-secrets-test --bin greentic-secrets-test "${CARGO_OFFLINE_ARGS[@]}" -- e2e --packs "${out_dir}"
 }
 
 if run_or_skip "greentic-secrets-test e2e (requires greentic-provision)" \
@@ -367,6 +374,7 @@ run_tarpaulin() {
   cargo tarpaulin \
     --workspace \
     --all-features \
+    "${CARGO_OFFLINE_ARGS[@]}" \
     --timeout 600 \
     --out Lcov \
     --output-dir coverage
@@ -388,7 +396,7 @@ fi
 run_conformance() {
   local provider="$1"
   step "Conformance: provider-${provider}"
-  cargo run -p greentic-secrets-conformance --features "provider-${provider}"
+  cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features "provider-${provider}"
 }
 
 run_local_provider_k8s() {
@@ -399,7 +407,7 @@ run_local_provider_k8s() {
     kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
   fi
   kind create cluster --name "$cluster" --wait 120s
-  cargo run -p greentic-secrets-conformance --features provider-k8s
+  cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features provider-k8s
   kind delete cluster --name "$cluster" >/dev/null 2>&1 || true
   KIND_CLUSTER=""
 }
@@ -423,7 +431,7 @@ run_local_provider_vault() {
     echo "[fail] Vault dev server did not become ready" >&2
     exit 1
   fi
-  VAULT_ADDR="$addr" VAULT_TOKEN="root" cargo run -p greentic-secrets-conformance --features provider-vault
+  VAULT_ADDR="$addr" VAULT_TOKEN="root" cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features provider-vault
   docker rm -f "$name" >/dev/null 2>&1 || true
   VAULT_CONTAINER=""
 }
@@ -476,19 +484,19 @@ can_run_live() {
 if run_or_skip "Live conformance: provider-aws (requires LOCAL_CHECK_ONLINE=1)" \
   can_run_live "aws" GTS_REGION GTS_PREFIX; then
   step "Live conformance: provider-aws"
-  cargo run -p greentic-secrets-conformance --features provider-aws
+  cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features provider-aws
 fi
 
 if run_or_skip "Live conformance: provider-azure (requires LOCAL_CHECK_ONLINE=1)" \
   can_run_live "azure" AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KEYVAULT_URL AZURE_KV_SCOPE GTS_PREFIX; then
   step "Live conformance: provider-azure"
-  cargo run -p greentic-secrets-conformance --features provider-azure
+  cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features provider-azure
 fi
 
 if run_or_skip "Live conformance: provider-gcp (requires LOCAL_CHECK_ONLINE=1)" \
   can_run_live "gcp" GTS_GCP_PROJECT GTS_PREFIX; then
   step "Live conformance: provider-gcp"
-  cargo run -p greentic-secrets-conformance --features provider-gcp
+  cargo run -p greentic-secrets-conformance "${CARGO_OFFLINE_ARGS[@]}" --features provider-gcp
 fi
 
 printf "\nAll requested checks finished.\n"

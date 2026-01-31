@@ -23,6 +23,8 @@ toml = { workspace = true }
 greentic-config = { workspace = true }
 greentic-config-types = { workspace = true }
 base64 = { workspace = true }
+secrets_broker = { workspace = true }
+secrets-provider-dev = { workspace = true }
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 greentic-types = { workspace = true }
@@ -31,6 +33,10 @@ time = { workspace = true }
 wasmtime = { workspace = true }
 wat = { workspace = true }
 tempfile = { workspace = true }
+greentic-component-runtime = { workspace = true }
+greentic-component-store = { workspace = true }
+greentic-interfaces-wasmtime = { workspace = true }
+wasmparser = { workspace = true, features = ["component-model"] }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

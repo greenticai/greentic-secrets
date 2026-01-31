@@ -235,6 +235,7 @@ fn build_manifest(pack_id: &str) -> anyhow::Result<PackManifest> {
     Ok(PackManifest {
         schema_version: "pack-v1".to_string(),
         pack_id: PackId::new(pack_id)?,
+        name: None,
         version: semver::Version::parse("0.1.0")?,
         kind: PackKind::Provider,
         publisher: "Greentic".to_string(),

@@ -84,6 +84,13 @@ greentic-secrets wizard -i seeds.yaml -o seeds.yaml
 greentic-secrets apply -f seeds.yaml
 ```
 
+### Admin command
+`greentic-secrets admin` exposes tenant/team administration (dev is the default backend). Set the working context with `greentic-secrets ctx` or the `--env/--tenant/--team` flags (pass `--team _` to drop the team segment) and optionally point at a different dev store with `--store-path` or the broker API with `--broker-url`/`--token`.
+- `greentic-secrets admin login` lets a provider hook in custom auth (no-op for the dev provider).
+- `greentic-secrets admin list` enumerates secrets for the current scope; pass `--prefix category[/name]` to filter, `--json` for machine output, and use `--broker-url`/`--token` when talking to a remote broker.
+- `greentic-secrets admin set --category configs --name db_url --format text --value 'postgres://...'` upserts a secret. Use `--value-file` to read bytes from disk, `--format bytes` together with base64 input, and `--visibility tenant` / `--description` as needed.
+- `greentic-secrets admin delete --category configs --name db_url` deletes the secret at the given scope.
+
 See `docs/seed-format.md` for the seed schema used by scaffold/wizard/apply.
 
 ### Providers (opt-in features)

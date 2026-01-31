@@ -23,3 +23,7 @@ Threat model highlights:
 Audit and rotate provider credentials regularly, and set the
 `CARGO_REGISTRY_TOKEN` secret in CI to ensure automated releases pull vetted
 artifacts only after the pipeline succeeds.
+
+## Secrets administration CLI
+
+`greentic-secrets admin list/set/delete` reuses the tenant/team context configured via `greentic-secrets ctx` (or `--env`/`--tenant`/`--team`) and respects the same backend configuration as `greentic-secrets apply`. Filtering, JSON output, store overrides via `--store-path`, or remote broker calls (`--broker-url`/`--token`) make it safe to audit, upsert, or purge secrets without embedding credentials in other tools.

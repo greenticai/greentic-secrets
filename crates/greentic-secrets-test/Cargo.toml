@@ -19,7 +19,7 @@ serde_cbor = { workspace = true }
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 tempfile = { workspace = true }
 greentic-types = { workspace = true }
-wasmtime = { version = "40", features = ["cranelift"] }
+wasmtime = { version = "41", features = ["cranelift"] }
 wat = "1"
 
 [dev-dependencies]

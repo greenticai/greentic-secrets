@@ -1,28 +1,26 @@
-use anyhow::{Context, Result, bail};
+mod admin;
+use admin::{AdminClient, AdminDeleteRequest, AdminScope, AdminSetRequest, build_client};
+use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
-use clap::{ArgAction, Args, Parser, Subcommand};
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use greentic_config::{CliOverrides as ConfigOverrides, ConfigResolver, ResolvedConfig};
-use greentic_config_types::{GreenticConfig, NetworkConfig, TlsMode};
+use greentic_config_types::{EnvId, GreenticConfig, NetworkConfig, TlsMode};
 use greentic_secrets_core::seed::{
     ApplyOptions, ApplyReport, DevContext, DevStore, HttpStore, SecretsStore, apply_seed,
     resolve_uri,
 };
+use greentic_secrets_core::types::Visibility;
 use greentic_secrets_spec::{SeedDoc, SeedEntry, SeedValue};
-use greentic_types::EnvId;
 use greentic_types::secrets::{SecretFormat, SecretRequirement};
-use handlebars::Handlebars;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tempfile::TempDir;
-use time::OffsetDateTime;
-use wasmtime::{Config, Engine as WasmtimeEngine, Instance, Module, Store};
 use zip::ZipArchive;
 
 #[derive(Parser)]
@@ -65,11 +63,12 @@ enum Command {
     Dev(DevCmd),
     #[command(subcommand)]
     Ctx(CtxCmd),
+    #[command(subcommand)]
+    Admin(AdminCmd),
     Scaffold(ScaffoldCmd),
     Wizard(WizardCmd),
     Apply(ApplyCmd),
     Init(InitCmd),
-    Setup(SetupCmd),
     #[command(subcommand)]
     Config(ConfigCmd),
 }
@@ -98,6 +97,125 @@ enum DevCmd {
 enum CtxCmd {
     Set(CtxSetArgs),
     Show,
+}
+
+#[derive(Subcommand)]
+enum AdminCmd {
+    Login(AdminActionArgs),
+    List(AdminListArgs),
+    Set(AdminSetArgs),
+    Delete(AdminDeleteArgs),
+}
+
+#[derive(Args)]
+struct AdminScopeArgs {
+    #[arg(long)]
+    env: Option<String>,
+    #[arg(long)]
+    tenant: Option<String>,
+    #[arg(long)]
+    team: Option<String>,
+}
+
+#[derive(Args, Default)]
+struct AdminCommonArgs {
+    #[arg(long)]
+    broker_url: Option<String>,
+    #[arg(long)]
+    token: Option<String>,
+    #[arg(long)]
+    store_path: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct AdminActionArgs {
+    #[command(flatten)]
+    scope: AdminScopeArgs,
+    #[command(flatten)]
+    common: AdminCommonArgs,
+}
+
+#[derive(Args)]
+struct AdminListArgs {
+    #[command(flatten)]
+    action: AdminActionArgs,
+    #[arg(long)]
+    prefix: Option<String>,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+enum AdminSecretFormat {
+    Text,
+    Json,
+    Bytes,
+}
+
+impl From<AdminSecretFormat> for SecretFormat {
+    fn from(value: AdminSecretFormat) -> Self {
+        match value {
+            AdminSecretFormat::Text => SecretFormat::Text,
+            AdminSecretFormat::Json => SecretFormat::Json,
+            AdminSecretFormat::Bytes => SecretFormat::Bytes,
+        }
+    }
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+enum AdminVisibilityArg {
+    User,
+    Team,
+    Tenant,
+}
+
+impl From<AdminVisibilityArg> for Visibility {
+    fn from(value: AdminVisibilityArg) -> Self {
+        match value {
+            AdminVisibilityArg::User => Visibility::User,
+            AdminVisibilityArg::Team => Visibility::Team,
+            AdminVisibilityArg::Tenant => Visibility::Tenant,
+        }
+    }
+}
+
+#[derive(Args)]
+struct AdminSetArgs {
+    #[command(flatten)]
+    action: AdminActionArgs,
+    #[arg(long)]
+    category: String,
+    #[arg(long)]
+    name: String,
+    #[arg(long, value_enum, default_value_t = AdminSecretFormat::Text)]
+    format: AdminSecretFormat,
+    #[arg(long, value_enum)]
+    visibility: Option<AdminVisibilityArg>,
+    #[arg(long)]
+    description: Option<String>,
+    #[arg(
+        long,
+        conflicts_with = "value_file",
+        required_unless_present = "value_file"
+    )]
+    value: Option<String>,
+    #[arg(
+        long,
+        value_name = "path",
+        conflicts_with = "value",
+        required_unless_present = "value"
+    )]
+    value_file: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct AdminDeleteArgs {
+    #[command(flatten)]
+    action: AdminActionArgs,
+    #[arg(long)]
+    category: String,
+    #[arg(long)]
+    name: String,
 }
 
 #[derive(Args)]
@@ -174,22 +292,6 @@ struct InitCmd {
     token: Option<String>,
 }
 
-#[derive(Args)]
-struct SetupCmd {
-    #[arg(long)]
-    pack: String,
-    #[arg(long, conflicts_with = "terraform")]
-    tofu: bool,
-    #[arg(long, conflicts_with = "tofu")]
-    terraform: bool,
-    #[arg(long)]
-    out: Option<PathBuf>,
-    #[arg(long)]
-    write_secrets_tfvars: bool,
-    #[arg(long, default_value_t = true, action = ArgAction::Set)]
-    dry_run: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CtxFile {
     env: String,
@@ -223,11 +325,11 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Dev(cmd) => handle_dev(cmd, &resolved.config),
         Command::Ctx(cmd) => handle_ctx(cmd, &resolved.config),
+        Command::Admin(cmd) => handle_admin(cmd, &resolved),
         Command::Scaffold(cmd) => handle_scaffold(cmd, &resolved),
         Command::Wizard(cmd) => handle_wizard(cmd, &resolved),
         Command::Apply(cmd) => handle_apply(cmd, &resolved),
         Command::Init(cmd) => handle_init(cmd, &resolved),
-        Command::Setup(cmd) => handle_setup(cmd, &resolved),
         Command::Config(cmd) => handle_config_cmd(cmd, &resolved),
     }
 }
@@ -312,6 +414,147 @@ fn handle_ctx(cmd: CtxCmd, cfg: &GreenticConfig) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn handle_admin(cmd: AdminCmd, resolved: &ResolvedConfig) -> Result<()> {
+    let ctx_file = read_ctx(&ctx_path(&resolved.config)).ok();
+    match cmd {
+        AdminCmd::Login(action) => {
+            let scope = admin_scope_from_args(&action.scope, resolved, ctx_file.as_ref())?;
+            let mut client = build_admin_client(&action.common, resolved)?;
+            client.login()?;
+            println!("Logged in for {} tenant {}", scope.env, scope.tenant);
+        }
+        AdminCmd::List(args) => {
+            let scope = admin_scope_from_args(&args.action.scope, resolved, ctx_file.as_ref())?;
+            let mut client = build_admin_client(&args.action.common, resolved)?;
+            let backend_desc = describe_admin_backend(&args.action.common, resolved);
+            println!("Secrets backend: {backend_desc}");
+            let items = client.list(&scope, args.prefix.as_deref())?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&items)?);
+            } else if items.is_empty() {
+                println!("no secrets found");
+            } else {
+                for item in items {
+                    println!(
+                        "{} [{:?}] {:?} {}",
+                        item.uri,
+                        item.visibility,
+                        item.content_type,
+                        item.latest_version.as_deref().unwrap_or("n/a")
+                    );
+                }
+            }
+        }
+        AdminCmd::Set(args) => {
+            let scope = admin_scope_from_args(&args.action.scope, resolved, ctx_file.as_ref())?;
+            let mut client = build_admin_client(&args.action.common, resolved)?;
+            let bytes = admin_value_bytes(&args)?;
+            let result = client.set(AdminSetRequest {
+                scope,
+                category: args.category.clone(),
+                name: args.name.clone(),
+                format: SecretFormat::from(args.format),
+                visibility: args.visibility.unwrap_or(AdminVisibilityArg::Tenant).into(),
+                description: args.description.clone(),
+                value: bytes,
+            })?;
+            println!("written {} (version {})", result.uri, result.version);
+        }
+        AdminCmd::Delete(args) => {
+            let scope = admin_scope_from_args(&args.action.scope, resolved, ctx_file.as_ref())?;
+            let mut client = build_admin_client(&args.action.common, resolved)?;
+            let result = client.delete(AdminDeleteRequest {
+                scope,
+                category: args.category.clone(),
+                name: args.name.clone(),
+            })?;
+            println!("deleted {} (version {})", result.uri, result.version);
+        }
+    }
+    Ok(())
+}
+
+fn admin_scope_from_args(
+    args: &AdminScopeArgs,
+    resolved: &ResolvedConfig,
+    ctx_file: Option<&CtxFile>,
+) -> Result<AdminScope> {
+    let drop_team = matches!(args.team.as_deref(), Some("_"));
+    let overrides = CtxOverrides {
+        env: args.env.clone(),
+        tenant: args.tenant.clone(),
+        team: if drop_team { None } else { args.team.clone() },
+    };
+    let mut ctx = resolve_ctx(&resolved.config, ctx_file, &overrides)
+        .context("ctx not set; run `ctx set` or pass --env/--tenant")?;
+    if drop_team {
+        ctx.team = None;
+    }
+    let team = ctx.team.filter(|value| value != "_");
+    Ok(AdminScope {
+        env: ctx.env,
+        tenant: ctx.tenant,
+        team,
+    })
+}
+
+fn build_admin_client(
+    common: &AdminCommonArgs,
+    resolved: &ResolvedConfig,
+) -> Result<Box<dyn AdminClient>> {
+    let store_path = common
+        .store_path
+        .clone()
+        .unwrap_or_else(|| dev_store_path(&resolved.config));
+    build_client(
+        resolved.config.secrets.kind.as_str(),
+        store_path,
+        common.broker_url.clone(),
+        common.token.clone(),
+    )
+}
+
+fn describe_admin_backend(common: &AdminCommonArgs, resolved: &ResolvedConfig) -> String {
+    let kind = resolved.config.secrets.kind.as_str();
+    match kind {
+        "dev" | "none" => {
+            let store_path = common
+                .store_path
+                .clone()
+                .unwrap_or_else(|| dev_store_path(&resolved.config));
+            if kind == "none" {
+                format!("secrets.kind=none (dev store at {})", store_path.display())
+            } else {
+                format!("dev store at {}", store_path.display())
+            }
+        }
+        _ => {
+            let broker_url = common
+                .broker_url
+                .as_deref()
+                .unwrap_or("<unspecified broker URL>");
+            format!("secrets.kind={} (broker at {})", kind, broker_url)
+        }
+    }
+}
+
+fn admin_value_bytes(args: &AdminSetArgs) -> Result<Vec<u8>> {
+    if let Some(path) = args.value_file.as_deref() {
+        return fs::read(path).with_context(|| format!("read value file {}", path.display()));
+    }
+    let value = args
+        .value
+        .as_deref()
+        .ok_or_else(|| anyhow!("value must be provided"))?;
+    if matches!(args.format, AdminSecretFormat::Bytes) {
+        STANDARD_NO_PAD
+            .decode(value)
+            .context("value must be base64 when format=bytes")
+    } else {
+        Ok(value.as_bytes().to_vec())
+    }
 }
 
 fn handle_scaffold(cmd: ScaffoldCmd, resolved: &ResolvedConfig) -> Result<()> {
@@ -492,110 +735,6 @@ fn handle_init(cmd: InitCmd, resolved: &ResolvedConfig) -> Result<()> {
         },
         resolved,
     )
-}
-
-fn handle_setup(cmd: SetupCmd, _resolved: &ResolvedConfig) -> Result<()> {
-    if !cmd.dry_run {
-        bail!("setup only supports --dry-run=true (no cloud calls are allowed)");
-    }
-
-    let flavor = if cmd.terraform {
-        IacFlavor::Terraform
-    } else {
-        IacFlavor::Tofu
-    };
-    let pack = resolve_pack(&cmd.pack)?;
-    let requirements = load_setup_requirements(&pack.root)?;
-    let config_schema = find_config_schema(&pack.root)?;
-
-    if !requirements.config_required.is_empty() {
-        println!(
-            "Required config keys: {}",
-            requirements.config_required.join(", ")
-        );
-    }
-    if !requirements.config_optional.is_empty() {
-        println!(
-            "Optional config keys: {}",
-            requirements.config_optional.join(", ")
-        );
-    }
-    if !requirements.secret_required.is_empty() {
-        println!(
-            "Required secret keys: {}",
-            requirements.secret_required.join(", ")
-        );
-    }
-    if !requirements.secret_optional.is_empty() {
-        println!(
-            "Optional secret keys: {}",
-            requirements.secret_optional.join(", ")
-        );
-    }
-
-    let config_values = collect_config_values(&requirements, config_schema.as_ref())?;
-    let (secret_values, write_secrets_file) =
-        collect_secret_values(&requirements, cmd.write_secrets_tfvars)?;
-    let answers = json!({
-        "config": config_values,
-        "secrets": secret_values,
-    });
-
-    if let Some(raw_requirements) = requirements.raw.as_ref() {
-        validate_answers(raw_requirements, &answers)?;
-    }
-
-    let plan = run_setup_apply(&pack.root, &answers)?;
-    let output_dir = cmd.out.unwrap_or_else(|| default_setup_out(&pack.slug));
-    fs::create_dir_all(&output_dir)
-        .with_context(|| format!("create output dir {}", output_dir.display()))?;
-
-    let template_root = pack.root.join("iac").join(flavor.template_dir());
-
-    let plan_value = plan.get("plan").cloned().unwrap_or_else(|| plan.clone());
-    let config_patch = plan_value
-        .get("config_patch")
-        .cloned()
-        .unwrap_or(Value::Object(serde_json::Map::new()));
-
-    let mut template_ctx = serde_json::Map::new();
-    let install_id = format!("{}-install", pack.slug);
-    template_ctx.insert(
-        "provider_id".to_owned(),
-        Value::String(pack.pack_id.clone()),
-    );
-    template_ctx.insert("install_id".to_owned(), Value::String(install_id.clone()));
-    template_ctx.insert("config".to_owned(), config_patch.clone());
-    template_ctx.insert("outputs".to_owned(), Value::Object(serde_json::Map::new()));
-
-    if template_root.exists() {
-        render_templates(&template_root, &output_dir, &Value::Object(template_ctx))?;
-        write_tfvars(&output_dir, &config_patch)?;
-        write_gitignore(&output_dir)?;
-        if write_secrets_file && let Some(secrets) = answers.get("secrets") {
-            write_secrets_tfvars(&output_dir, secrets)?;
-        }
-    } else {
-        println!("no infra required");
-    }
-
-    write_readme(
-        &output_dir,
-        &pack,
-        flavor,
-        write_secrets_file,
-        template_root.exists(),
-    )?;
-    write_provider_install(
-        &output_dir,
-        &pack,
-        &plan_value,
-        &requirements,
-        write_secrets_file,
-    )?;
-
-    println!("Wrote setup scaffolding to {}", output_dir.display());
-    Ok(())
 }
 
 fn scaffold_entry(ctx: &CtxFile, req: &SecretRequirement) -> SeedEntry {
@@ -914,1102 +1053,4 @@ fn read_requirements_from_zip(
     let reqs: Vec<SecretRequirement> =
         serde_json::from_slice(&data).context("gtpack secret requirements are not valid JSON")?;
     Ok(Some(reqs))
-}
-
-#[derive(Clone, Copy)]
-enum IacFlavor {
-    Tofu,
-    Terraform,
-}
-
-impl IacFlavor {
-    fn template_dir(self) -> &'static str {
-        match self {
-            IacFlavor::Tofu => "tofu",
-            IacFlavor::Terraform => "terraform",
-        }
-    }
-
-    fn cli_name(self) -> &'static str {
-        match self {
-            IacFlavor::Tofu => "tofu",
-            IacFlavor::Terraform => "terraform",
-        }
-    }
-}
-
-struct ResolvedPack {
-    root: PathBuf,
-    pack_id: String,
-    slug: String,
-    _temp: Option<TempDir>,
-}
-
-struct SetupRequirements {
-    raw: Option<Value>,
-    config_required: Vec<String>,
-    config_optional: Vec<String>,
-    config_enums: HashMap<String, Vec<String>>,
-    secret_required: Vec<String>,
-    secret_optional: Vec<String>,
-}
-
-fn resolve_pack(input: &str) -> Result<ResolvedPack> {
-    let path = PathBuf::from(input);
-    if path.exists() {
-        return resolve_pack_path(&path);
-    }
-
-    if let Some(found) = find_pack_by_id(input)? {
-        return resolve_pack_path(&found);
-    }
-
-    bail!("pack not found: {input}");
-}
-
-fn resolve_pack_path(path: &Path) -> Result<ResolvedPack> {
-    if path.is_file() {
-        if path.extension().and_then(|ext| ext.to_str()) == Some("gtpack") {
-            let temp = extract_gtpack(path)?;
-            let root = temp.path().to_path_buf();
-            let pack_id = read_pack_id(&root)?;
-            let slug = slug_from_pack_id(&pack_id);
-            return Ok(ResolvedPack {
-                root,
-                pack_id,
-                slug,
-                _temp: Some(temp),
-            });
-        }
-        bail!("pack path must be a directory or .gtpack file");
-    }
-
-    let pack_id = read_pack_id(path)?;
-    let slug = slug_from_pack_id(&pack_id);
-    Ok(ResolvedPack {
-        root: path.to_path_buf(),
-        pack_id,
-        slug,
-        _temp: None,
-    })
-}
-
-fn find_pack_by_id(pack_id: &str) -> Result<Option<PathBuf>> {
-    let roots = [PathBuf::from("dist/packs"), PathBuf::from("packs")];
-    for root in roots {
-        if !root.exists() {
-            continue;
-        }
-        for entry in
-            fs::read_dir(&root).with_context(|| format!("read pack dir {}", root.display()))?
-        {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file()
-                && path.extension().and_then(|ext| ext.to_str()) == Some("gtpack")
-                && let Some(id) = read_pack_id_from_gtpack(&path).ok().flatten()
-                && (id == pack_id || slug_from_pack_id(&id) == pack_id)
-            {
-                return Ok(Some(path));
-            }
-            if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("gtpack") {
-                if path
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .map(|stem| stem.contains(pack_id))
-                    .unwrap_or(false)
-                {
-                    return Ok(Some(path));
-                }
-            } else if path.is_dir() {
-                if let Ok(id) = read_pack_id(&path)
-                    && (id == pack_id || slug_from_pack_id(&id) == pack_id)
-                {
-                    return Ok(Some(path));
-                }
-                if path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.contains(pack_id))
-                    .unwrap_or(false)
-                {
-                    return Ok(Some(path));
-                }
-            }
-        }
-    }
-    Ok(None)
-}
-
-fn extract_gtpack(path: &Path) -> Result<TempDir> {
-    let temp = TempDir::new().context("create temp dir")?;
-    let file = fs::File::open(path).with_context(|| format!("open pack {}", path.display()))?;
-    let mut archive = ZipArchive::new(file).context("read pack archive")?;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).context("read pack entry")?;
-        let out_path = temp.path().join(entry.name());
-        if entry.is_dir() {
-            fs::create_dir_all(&out_path).context("create pack dir")?;
-            continue;
-        }
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).context("create pack parent")?;
-        }
-        let mut out_file = fs::File::create(&out_path).context("write pack entry")?;
-        std::io::copy(&mut entry, &mut out_file).context("copy pack entry")?;
-    }
-    Ok(temp)
-}
-
-fn read_pack_id(root: &Path) -> Result<String> {
-    let candidates = [
-        root.join("pack.json"),
-        root.join("assets").join("pack.json"),
-        root.join("metadata.json"),
-        root.join("pack").join("metadata.json"),
-        root.join("gtpack").join("metadata.json"),
-    ];
-    for path in candidates {
-        if !path.exists() {
-            continue;
-        }
-        let raw = fs::read_to_string(&path)
-            .with_context(|| format!("read pack metadata {}", path.display()))?;
-        let value: Value = serde_json::from_str(&raw)
-            .with_context(|| format!("parse pack metadata {}", path.display()))?;
-        if let Some(id) = value.get("id").and_then(Value::as_str) {
-            return Ok(id.to_owned());
-        }
-        if let Some(id) = value.get("pack_id").and_then(Value::as_str) {
-            return Ok(id.to_owned());
-        }
-    }
-    bail!("pack id not found under {}", root.display());
-}
-
-fn read_pack_id_from_gtpack(path: &Path) -> Result<Option<String>> {
-    let file = fs::File::open(path).with_context(|| format!("open pack {}", path.display()))?;
-    let mut archive = ZipArchive::new(file).context("open pack zip")?;
-    for name in ["pack.json", "assets/pack.json"] {
-        if let Ok(mut file) = archive.by_name(name) {
-            let mut data = String::new();
-            io::Read::read_to_string(&mut file, &mut data).context("read pack.json")?;
-            let value: Value = serde_json::from_str(&data).context("parse pack.json in gtpack")?;
-            if let Some(id) = value.get("id").and_then(Value::as_str) {
-                return Ok(Some(id.to_owned()));
-            }
-        }
-    }
-    Ok(None)
-}
-
-fn slug_from_pack_id(pack_id: &str) -> String {
-    pack_id.split('.').next_back().unwrap_or(pack_id).to_owned()
-}
-
-fn load_setup_requirements(root: &Path) -> Result<SetupRequirements> {
-    let empty_answers = Value::Object(serde_json::Map::new());
-    if let Some(value) = run_requirements_flow(root, &empty_answers)? {
-        let raw = Some(value.clone());
-        return Ok(parse_requirements(&value, raw));
-    }
-
-    let config_schema = find_config_schema(root)?;
-    let (config_required, config_optional, config_enums) =
-        config_requirements_from_schema(config_schema.as_ref());
-    let (secret_required, secret_optional) = secret_requirements_from_assets(root)?;
-    Ok(SetupRequirements {
-        raw: None,
-        config_required,
-        config_optional,
-        config_enums,
-        secret_required,
-        secret_optional,
-    })
-}
-
-fn parse_requirements(value: &Value, raw: Option<Value>) -> SetupRequirements {
-    let requirements = value.get("requirements").unwrap_or(value);
-    let config_required = requirements
-        .get("config")
-        .and_then(|value| value.get("required"))
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    let config_optional = requirements
-        .get("config")
-        .and_then(|value| value.get("optional"))
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut config_enums = HashMap::new();
-    if let Some(map) = requirements
-        .get("config")
-        .and_then(|value| value.get("constraints"))
-        .and_then(|value| value.get("enum"))
-        .and_then(Value::as_object)
-    {
-        for (key, value) in map {
-            if let Some(list) = value.as_array() {
-                let options: Vec<String> = list
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect();
-                if !options.is_empty() {
-                    config_enums.insert(key.clone(), options);
-                }
-            }
-        }
-    }
-    let (secret_required, secret_optional) = requirements
-        .get("secrets")
-        .and_then(Value::as_object)
-        .map(|secrets| {
-            let required = secrets
-                .get("required")
-                .and_then(Value::as_array)
-                .map(|list| {
-                    list.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let optional = secrets
-                .get("optional")
-                .and_then(Value::as_array)
-                .map(|list| {
-                    list.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default();
-            (required, optional)
-        })
-        .unwrap_or_default();
-
-    SetupRequirements {
-        raw,
-        config_required,
-        config_optional,
-        config_enums,
-        secret_required,
-        secret_optional,
-    }
-}
-
-fn config_requirements_from_schema(
-    schema: Option<&Value>,
-) -> (Vec<String>, Vec<String>, HashMap<String, Vec<String>>) {
-    let Some(schema) = schema else {
-        return (Vec::new(), Vec::new(), HashMap::new());
-    };
-    let required = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut enums = HashMap::new();
-    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
-        for (key, value) in properties {
-            if let Some(options) = value.get("enum").and_then(Value::as_array) {
-                let values: Vec<String> = options
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect();
-                if !values.is_empty() {
-                    enums.insert(key.clone(), values);
-                }
-            }
-        }
-    }
-    (required, Vec::new(), enums)
-}
-
-fn secret_requirements_from_assets(root: &Path) -> Result<(Vec<String>, Vec<String>)> {
-    let candidates = [
-        root.join("secret-requirements.json"),
-        root.join("assets").join("secret-requirements.json"),
-    ];
-    for path in candidates {
-        if !path.exists() {
-            continue;
-        }
-        let raw = fs::read_to_string(&path)
-            .with_context(|| format!("read secret requirements {}", path.display()))?;
-        let value: Value = serde_json::from_str(&raw)
-            .with_context(|| format!("parse secret requirements {}", path.display()))?;
-        let mut required = Vec::new();
-        let mut optional = Vec::new();
-        if let Value::Array(items) = value {
-            for item in items {
-                let key = item
-                    .get("key")
-                    .and_then(Value::as_str)
-                    .or_else(|| item.get("id").and_then(Value::as_str))
-                    .or_else(|| item.get("name").and_then(Value::as_str));
-                let required_flag = item
-                    .get("required")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                if let Some(key) = key {
-                    if required_flag {
-                        required.push(key.to_owned());
-                    } else {
-                        optional.push(key.to_owned());
-                    }
-                }
-            }
-        }
-        return Ok((required, optional));
-    }
-    Ok((Vec::new(), Vec::new()))
-}
-
-fn find_config_schema(root: &Path) -> Result<Option<Value>> {
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).with_context(|| format!("read dir {}", dir.display()))? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.file_name().and_then(|name| name.to_str()) == Some("config.schema.json") {
-                let raw = fs::read_to_string(&path)
-                    .with_context(|| format!("read {}", path.display()))?;
-                let schema: Value = serde_json::from_str(&raw)
-                    .with_context(|| format!("parse {}", path.display()))?;
-                return Ok(Some(schema));
-            }
-        }
-    }
-    Ok(None)
-}
-
-fn collect_config_values(
-    requirements: &SetupRequirements,
-    schema: Option<&Value>,
-) -> Result<Value> {
-    let mut config = serde_json::Map::new();
-    if let Some(schema) = schema {
-        let required_keys = schema
-            .get("required")
-            .and_then(Value::as_array)
-            .map(|list| {
-                list.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_else(|| requirements.config_required.clone());
-        let properties = schema.get("properties").and_then(Value::as_object);
-        for key in required_keys {
-            let prop = properties.and_then(|map| map.get(&key));
-            if let Some(prop) = prop {
-                let enum_override = requirements.config_enums.get(&key);
-                if let Some(value) = prompt_schema_value(&key, prop, true, enum_override)? {
-                    config.insert(key, value);
-                }
-            } else {
-                let value = prompt_string_value(&key, true, None)?;
-                config.insert(key, Value::String(value));
-            }
-        }
-        return Ok(Value::Object(config));
-    }
-
-    for key in &requirements.config_required {
-        let enum_override = requirements.config_enums.get(key);
-        if let Some(options) = enum_override {
-            if let Some(value) = prompt_enum_value(key, options, true)? {
-                config.insert(key.clone(), Value::String(value));
-            }
-            continue;
-        }
-        let value = prompt_string_value(key, true, None)?;
-        config.insert(key.clone(), Value::String(value));
-    }
-    Ok(Value::Object(config))
-}
-
-fn collect_secret_values(
-    requirements: &SetupRequirements,
-    write_secrets_tfvars: bool,
-) -> Result<(Value, bool)> {
-    if requirements.secret_required.is_empty() && requirements.secret_optional.is_empty() {
-        return Ok((Value::Object(serde_json::Map::new()), false));
-    }
-    let want_values = write_secrets_tfvars;
-
-    let mut secrets = serde_json::Map::new();
-    for key in &requirements.secret_required {
-        if want_values {
-            let value = prompt_secret_value(key, true)?;
-            secrets.insert(key.clone(), Value::String(value));
-        } else {
-            secrets.insert(key.clone(), Value::String(secret_placeholder()));
-        }
-    }
-    if want_values {
-        for key in &requirements.secret_optional {
-            let value = prompt_secret_value(key, false)?;
-            if !value.is_empty() {
-                secrets.insert(key.clone(), Value::String(value));
-            }
-        }
-    }
-
-    Ok((Value::Object(secrets), write_secrets_tfvars))
-}
-
-fn prompt_schema_value(
-    key: &str,
-    schema: &Value,
-    required: bool,
-    enum_override: Option<&Vec<String>>,
-) -> Result<Option<Value>> {
-    if let Some(options) = enum_override {
-        let value = prompt_enum_value(key, options, required)?;
-        return Ok(value.map(Value::String));
-    }
-    if let Some(options) = schema.get("enum").and_then(Value::as_array) {
-        let values: Vec<String> = options
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect();
-        let value = prompt_enum_value(key, &values, required)?;
-        return Ok(value.map(Value::String));
-    }
-    let Some(value_type) = schema.get("type").and_then(Value::as_str) else {
-        let value = prompt_string_value(key, required, None)?;
-        return Ok(Some(Value::String(value)));
-    };
-    match value_type {
-        "object" => {
-            let value = prompt_object_value(key, schema)?;
-            if value.is_empty() && !required {
-                Ok(None)
-            } else {
-                Ok(Some(Value::Object(value)))
-            }
-        }
-        "boolean" => {
-            let default = schema.get("default").and_then(Value::as_bool);
-            let value = prompt_bool_value(key, required, default)?;
-            Ok(value.map(Value::Bool))
-        }
-        "integer" => {
-            let default = schema.get("default").and_then(Value::as_i64);
-            let value = prompt_int_value(key, required, default)?;
-            Ok(value.map(|val| Value::Number(val.into())))
-        }
-        "number" => {
-            let default = schema.get("default").and_then(Value::as_f64);
-            let value = prompt_float_value(key, required, default)?;
-            Ok(value.map(|val| {
-                Value::Number(serde_json::Number::from_f64(val).unwrap_or_else(|| 0.into()))
-            }))
-        }
-        "array" => {
-            let default = schema.get("default").cloned();
-            let value = prompt_array_value(key, required, default)?;
-            Ok(value)
-        }
-        _ => {
-            let default = schema.get("default").and_then(Value::as_str);
-            let value = prompt_string_value(key, required, default)?;
-            Ok(Some(Value::String(value)))
-        }
-    }
-}
-
-fn prompt_object_value(key: &str, schema: &Value) -> Result<serde_json::Map<String, Value>> {
-    let mut map = serde_json::Map::new();
-    let required_fields: Vec<String> = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    let properties = schema.get("properties").and_then(Value::as_object);
-    for field in required_fields {
-        let field_schema = properties.and_then(|props| props.get(&field));
-        let field_key = format!("{key}.{field}");
-        if let Some(field_schema) = field_schema {
-            if let Some(value) = prompt_schema_value(&field_key, field_schema, true, None)? {
-                map.insert(field, value);
-            }
-        } else {
-            let value = prompt_string_value(&field_key, true, None)?;
-            map.insert(field, Value::String(value));
-        }
-    }
-    Ok(map)
-}
-
-fn prompt_line(prompt: &str) -> Result<String> {
-    print!("{prompt}");
-    io::stdout().flush().ok();
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    Ok(input.trim().to_string())
-}
-
-fn prompt_enum_value(key: &str, options: &[String], required: bool) -> Result<Option<String>> {
-    println!("Select {key}:");
-    for (idx, option) in options.iter().enumerate() {
-        println!("  {}) {}", idx + 1, option);
-    }
-    loop {
-        let input = prompt_line("> ")?;
-        if input.is_empty() && !required {
-            return Ok(None);
-        }
-        if input.is_empty() && required {
-            continue;
-        }
-        if let Ok(index) = input.parse::<usize>()
-            && index > 0
-            && index <= options.len()
-        {
-            return Ok(Some(options[index - 1].clone()));
-        }
-        if options.iter().any(|opt| opt == &input) {
-            return Ok(Some(input));
-        }
-        println!("Invalid choice, try again.");
-    }
-}
-
-fn prompt_string_value(key: &str, required: bool, default: Option<&str>) -> Result<String> {
-    loop {
-        let label = if let Some(default) = default {
-            format!("{key} [{default}]: ")
-        } else {
-            format!("{key}: ")
-        };
-        let input = prompt_line(&label)?;
-        if input.is_empty() {
-            if let Some(default) = default {
-                return Ok(default.to_owned());
-            }
-            if !required {
-                return Ok(String::new());
-            }
-            continue;
-        }
-        return Ok(input);
-    }
-}
-
-fn prompt_secret_value(key: &str, required: bool) -> Result<String> {
-    loop {
-        let input = prompt_line(&format!("{key} (secret): "))?;
-        if input.is_empty() && required {
-            continue;
-        }
-        return Ok(input);
-    }
-}
-
-fn prompt_bool_value(key: &str, required: bool, default: Option<bool>) -> Result<Option<bool>> {
-    let label = match default {
-        Some(true) => format!("{key} [Y/n]: "),
-        Some(false) => format!("{key} [y/N]: "),
-        None => format!("{key} [y/n]: "),
-    };
-    loop {
-        let input = prompt_line(&label)?;
-        if input.is_empty() {
-            if let Some(default) = default {
-                return Ok(Some(default));
-            }
-            if !required {
-                return Ok(None);
-            }
-            continue;
-        }
-        let value = matches!(input.as_str(), "y" | "Y" | "yes" | "true" | "1");
-        return Ok(Some(value));
-    }
-}
-
-fn prompt_int_value(key: &str, required: bool, default: Option<i64>) -> Result<Option<i64>> {
-    let label = if let Some(default) = default {
-        format!("{key} [{default}]: ")
-    } else {
-        format!("{key}: ")
-    };
-    loop {
-        let input = prompt_line(&label)?;
-        if input.is_empty() {
-            if let Some(default) = default {
-                return Ok(Some(default));
-            }
-            if !required {
-                return Ok(None);
-            }
-            continue;
-        }
-        if let Ok(value) = input.parse::<i64>() {
-            return Ok(Some(value));
-        }
-        println!("Invalid number, try again.");
-    }
-}
-
-fn prompt_float_value(key: &str, required: bool, default: Option<f64>) -> Result<Option<f64>> {
-    let label = if let Some(default) = default {
-        format!("{key} [{default}]: ")
-    } else {
-        format!("{key}: ")
-    };
-    loop {
-        let input = prompt_line(&label)?;
-        if input.is_empty() {
-            if let Some(default) = default {
-                return Ok(Some(default));
-            }
-            if !required {
-                return Ok(None);
-            }
-            continue;
-        }
-        if let Ok(value) = input.parse::<f64>() {
-            return Ok(Some(value));
-        }
-        println!("Invalid number, try again.");
-    }
-}
-
-fn prompt_array_value(key: &str, required: bool, default: Option<Value>) -> Result<Option<Value>> {
-    let label = if default.is_some() {
-        format!("{key} (comma-separated, empty for default): ")
-    } else {
-        format!("{key} (comma-separated): ")
-    };
-    loop {
-        let input = prompt_line(&label)?;
-        if input.is_empty() {
-            if let Some(default) = default.clone() {
-                return Ok(Some(default));
-            }
-            if !required {
-                return Ok(None);
-            }
-            continue;
-        }
-        let values: Vec<Value> = input
-            .split(',')
-            .map(|value| Value::String(value.trim().to_owned()))
-            .collect();
-        return Ok(Some(Value::Array(values)));
-    }
-}
-
-fn secret_placeholder() -> String {
-    "SET_AT_APPLY".to_owned()
-}
-
-fn run_requirements_flow(root: &Path, answers: &Value) -> Result<Option<Value>> {
-    let Some(component_path) = find_wasm_for_step(root, "requirements") else {
-        return Ok(None);
-    };
-    let output = execute_wasm_step(
-        &component_path,
-        "requirements",
-        answers,
-        Duration::from_secs(30),
-    )?;
-    let value = output
-        .get("requirements")
-        .cloned()
-        .unwrap_or_else(|| output.clone());
-    Ok(Some(value))
-}
-
-fn run_setup_apply(root: &Path, answers: &Value) -> Result<Value> {
-    let Some(component_path) = find_wasm_for_step(root, "apply") else {
-        bail!("setup apply step not found in pack");
-    };
-    execute_wasm_step(&component_path, "apply", answers, Duration::from_secs(30))
-}
-
-fn find_wasm_for_step(root: &Path, step: &str) -> Option<PathBuf> {
-    let candidates = [format!("setup_default__{step}")];
-    let roots = [
-        root.join("wasm"),
-        root.join("components"),
-        root.to_path_buf(),
-    ];
-    for candidate in candidates {
-        for base in &roots {
-            let wasm = base.join(format!("{candidate}.wasm"));
-            if wasm.exists() {
-                return Some(wasm);
-            }
-            let wat = base.join(format!("{candidate}.wat"));
-            if wat.exists() {
-                return Some(wat);
-            }
-        }
-    }
-    None
-}
-
-fn execute_wasm_step(
-    path: &Path,
-    step_name: &str,
-    answers: &Value,
-    timeout: Duration,
-) -> Result<Value> {
-    let wasm_bytes = load_component_bytes(path)?;
-    let mut config = Config::new();
-    config.epoch_interruption(true);
-    let engine = WasmtimeEngine::new(&config)?;
-    let mut store = Store::new(&engine, ());
-
-    let engine_clone = engine.clone();
-    let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
-    let epoch_handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(timeout_ms));
-        engine_clone.increment_epoch();
-    });
-    store.set_epoch_deadline(1);
-
-    let module = Module::new(&engine, wasm_bytes)?;
-    let instance = Instance::new(&mut store, &module, &[])?;
-    let memory = instance
-        .get_memory(&mut store, "memory")
-        .ok_or_else(|| anyhow::anyhow!("missing exported memory"))?;
-
-    let input = json!({
-        "step": step_name,
-        "inputs": { "answers": answers },
-        "state": { "answers": answers, "previous": [] }
-    });
-    let input_bytes = serde_json::to_vec(&input)?;
-    write_wasm_input(&memory, &mut store, &input_bytes)?;
-
-    let func = instance
-        .get_func(&mut store, "run")
-        .ok_or_else(|| anyhow::anyhow!("missing run export"))?;
-    let func = func.typed::<(i32, i32), (i32, i32)>(&store)?;
-
-    let (output_ptr, output_len) = func
-        .call(&mut store, (4096i32, input_bytes.len() as i32))
-        .map_err(|err| anyhow::anyhow!("wasm trap: {err}"))?;
-    let output = read_wasm_output(&memory, &mut store, output_ptr, output_len)?;
-
-    let _ = epoch_handle.join();
-    Ok(output)
-}
-
-fn load_component_bytes(path: &Path) -> Result<Vec<u8>> {
-    let bytes =
-        fs::read(path).with_context(|| format!("failed to read component {}", path.display()))?;
-    if path.extension().and_then(|ext| ext.to_str()) == Some("wat") {
-        let wasm = wat::parse_bytes(&bytes)
-            .map_err(|err| anyhow::anyhow!("failed to parse wat: {err}"))?;
-        Ok(wasm.into())
-    } else {
-        Ok(bytes)
-    }
-}
-
-fn write_wasm_input(
-    memory: &wasmtime::Memory,
-    store: &mut Store<()>,
-    input_bytes: &[u8],
-) -> Result<()> {
-    let memory_size = memory.data_size(&store);
-    let input_ptr = 4096usize;
-    if input_ptr + input_bytes.len() > memory_size {
-        bail!("wasm input too large");
-    }
-    memory
-        .write(store, input_ptr, input_bytes)
-        .map_err(|err| anyhow::anyhow!("memory write failed: {err}"))?;
-    Ok(())
-}
-
-fn read_wasm_output(
-    memory: &wasmtime::Memory,
-    store: &mut Store<()>,
-    output_ptr: i32,
-    output_len: i32,
-) -> Result<Value> {
-    let output_len = output_len as usize;
-    let mut buffer = vec![0u8; output_len];
-    memory
-        .read(store, output_ptr as usize, &mut buffer)
-        .map_err(|err| anyhow::anyhow!("memory read failed: {err}"))?;
-    let value = serde_json::from_slice(&buffer)?;
-    Ok(value)
-}
-
-fn render_templates(src: &Path, dst: &Path, ctx: &Value) -> Result<()> {
-    let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(handlebars::no_escape);
-    render_templates_inner(src, dst, ctx, &handlebars)
-}
-
-fn render_templates_inner(
-    src: &Path,
-    dst: &Path,
-    ctx: &Value,
-    handlebars: &Handlebars<'_>,
-) -> Result<()> {
-    for entry in fs::read_dir(src).with_context(|| format!("read {}", src.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        let out_path = dst.join(entry.file_name());
-        if path.is_dir() {
-            fs::create_dir_all(&out_path)
-                .with_context(|| format!("create {}", out_path.display()))?;
-            render_templates_inner(&path, &out_path, ctx, handlebars)?;
-            continue;
-        }
-        let raw = fs::read_to_string(&path)
-            .with_context(|| format!("read template {}", path.display()))?;
-        let rendered = handlebars
-            .render_template(&raw, ctx)
-            .with_context(|| format!("render template {}", path.display()))?;
-        fs::write(&out_path, rendered).with_context(|| format!("write {}", out_path.display()))?;
-    }
-    Ok(())
-}
-
-fn write_tfvars(out_dir: &Path, config: &Value) -> Result<()> {
-    let path = out_dir.join("terraform.tfvars.json");
-    let value = if config.is_object() {
-        config.clone()
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
-    let content = serde_json::to_string_pretty(&value)?;
-    fs::write(&path, content).with_context(|| format!("write {}", path.display()))?;
-    Ok(())
-}
-
-fn write_secrets_tfvars(out_dir: &Path, secrets: &Value) -> Result<()> {
-    let path = out_dir.join("secrets.auto.tfvars.json");
-    let value = if secrets.is_object() {
-        secrets.clone()
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
-    let content = serde_json::to_string_pretty(&value)?;
-    fs::write(&path, content).with_context(|| format!("write {}", path.display()))?;
-    Ok(())
-}
-
-fn write_gitignore(out_dir: &Path) -> Result<()> {
-    let path = out_dir.join(".gitignore");
-    let content = "secrets.auto.tfvars.json\n*.auto.tfvars*\n*.tfstate*\n";
-    fs::write(&path, content).with_context(|| format!("write {}", path.display()))?;
-    Ok(())
-}
-
-fn write_provider_install(
-    out_dir: &Path,
-    pack: &ResolvedPack,
-    plan: &Value,
-    requirements: &SetupRequirements,
-    write_secrets_tfvars: bool,
-) -> Result<()> {
-    let sanitized_plan = sanitize_plan(plan);
-    let config_patch = plan
-        .get("config_patch")
-        .cloned()
-        .unwrap_or(Value::Object(serde_json::Map::new()));
-    let install_id = format!("{}-install", pack.slug);
-    let now = OffsetDateTime::now_utc();
-    let stamp = format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        now.year(),
-        now.month() as u8,
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    );
-    let install = json!({
-        "provider_id": pack.pack_id,
-        "install_id": install_id,
-        "generated_at": stamp,
-        "config_patch": config_patch,
-        "plan": sanitized_plan,
-        "secrets": {
-            "required": requirements.secret_required.clone(),
-            "optional": requirements.secret_optional.clone(),
-            "written_to_disk": write_secrets_tfvars,
-        }
-    });
-    let path = out_dir.join("provider-install.json");
-    fs::write(&path, serde_json::to_string_pretty(&install)?)
-        .with_context(|| format!("write {}", path.display()))?;
-    Ok(())
-}
-
-fn write_readme(
-    out_dir: &Path,
-    pack: &ResolvedPack,
-    flavor: IacFlavor,
-    write_secrets_tfvars: bool,
-    has_templates: bool,
-) -> Result<()> {
-    let mut readme = String::new();
-    readme.push_str("# Greentic Secrets Setup\n\n");
-    readme.push_str(&format!("Provider: `{}`\n\n", pack.pack_id));
-    if has_templates {
-        readme.push_str("## Next steps\n\n");
-        readme.push_str(&format!(
-            "1. `{0} init`\n2. `{0} plan`\n3. `{0} apply`\n\n",
-            flavor.cli_name()
-        ));
-    } else {
-        readme.push_str("## Infrastructure\n\n");
-        readme.push_str("No infrastructure required for this provider.\n\n");
-    }
-    readme.push_str("## Secrets handling\n\n");
-    if write_secrets_tfvars {
-        readme.push_str(
-            "`secrets.auto.tfvars.json` was generated (auto-loaded by Terraform/OpenTofu); keep it out of version control.\n",
-        );
-    } else {
-        readme.push_str(
-            "No secret values were written. Provide secrets via `TF_VAR_<secret_key>` or your external injection system.\n",
-        );
-    }
-    let path = out_dir.join("README.generated.md");
-    fs::write(&path, readme).with_context(|| format!("write {}", path.display()))?;
-    Ok(())
-}
-
-fn sanitize_plan(plan: &Value) -> Value {
-    let mut sanitized = plan.clone();
-    if let Some(secrets_patch) = sanitized.get_mut("secrets_patch")
-        && let Some(set) = secrets_patch.get_mut("set").and_then(Value::as_object_mut)
-    {
-        for value in set.values_mut() {
-            let mut replacement = serde_json::Map::new();
-            replacement.insert("redacted".to_owned(), Value::Bool(true));
-            replacement.insert("value".to_owned(), Value::Null);
-            *value = Value::Object(replacement);
-        }
-    }
-    sanitized
-}
-
-fn default_setup_out(slug: &str) -> PathBuf {
-    let now = OffsetDateTime::now_utc();
-    let stamp = format!(
-        "{:04}{:02}{:02}-{:02}{:02}{:02}",
-        now.year(),
-        now.month() as u8,
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    );
-    PathBuf::from(format!("out/secrets-setup/{slug}/{stamp}"))
-}
-
-fn validate_answers(requirements: &Value, answers: &Value) -> Result<()> {
-    let config_required = requirements
-        .get("config")
-        .and_then(|value| value.get("required"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let secret_required = requirements
-        .get("secrets")
-        .and_then(|value| value.get("required"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let enum_constraints = requirements
-        .get("config")
-        .and_then(|value| value.get("constraints"))
-        .and_then(|value| value.get("enum"))
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-
-    let config_values = answers
-        .get("config")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let secret_values = answers
-        .get("secrets")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-
-    for key in config_required {
-        let key = key.as_str().unwrap_or_default();
-        if key.is_empty() {
-            continue;
-        }
-        let Some(value) = config_values.get(key) else {
-            bail!("missing required config field {key}");
-        };
-        if matches!(value, Value::String(text) if text.is_empty()) {
-            bail!("missing required config field {key}");
-        }
-    }
-
-    for key in secret_required {
-        let key = key.as_str().unwrap_or_default();
-        if key.is_empty() {
-            continue;
-        }
-        let Some(value) = secret_values.get(key) else {
-            bail!("missing required secret field {key}");
-        };
-        if matches!(value, Value::String(text) if text.is_empty()) {
-            bail!("missing required secret field {key}");
-        }
-    }
-
-    for (key, values) in enum_constraints {
-        let Some(values) = values.as_array() else {
-            continue;
-        };
-        let Some(current) = config_values.get(&key) else {
-            continue;
-        };
-        let current = current.as_str().unwrap_or_default();
-        if !values.iter().any(|value| value.as_str() == Some(current)) {
-            bail!("config field {key} must be one of {:?}", values);
-        }
-    }
-    Ok(())
 }

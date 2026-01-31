@@ -329,6 +329,7 @@ mod tests {
         PackManifest {
             schema_version: "pack-v1".to_owned(),
             pack_id: pack_id.parse::<PackId>().expect("pack id"),
+            name: None,
             version: Version::parse("0.1.0").expect("version"),
             kind: PackKind::Application,
             publisher: "greentic".to_owned(),

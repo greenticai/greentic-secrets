@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
       - run: cargo build --workspace --all-features
       - run: RUST_BACKTRACE=1 cargo test --workspace --all-features -- --nocapture
       - name: Deny reqwest::blocking in Vault provider
@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
 
       - if: matrix.provider == 'k8s'
         name: Start KinD
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install greentic-pack --version 0.4.16

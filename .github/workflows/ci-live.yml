@@ -24,7 +24,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
       - name: Configure AWS OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -45,7 +45,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -73,7 +73,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.89
+      - uses: dtolnay/rust-toolchain@1.90
       - id: auth
         uses: google-github-actions/auth@v2
         with:
