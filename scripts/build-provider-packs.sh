@@ -33,6 +33,10 @@ built_gtpacks=()
 bundle_staging="${OUT_DIR}/secrets-providers"
 rm -rf "${bundle_staging}"
 mkdir -p "${bundle_staging}"
+bundle_deps="${bundle_staging}/deps.tmp"
+: > "${bundle_deps}"
+bundle_deps="${bundle_staging}/deps.tmp"
+: > "${bundle_deps}"
 
 echo "Building provider packs for version ${VERSION}"
 
