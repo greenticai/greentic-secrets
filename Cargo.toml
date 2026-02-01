@@ -31,7 +31,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
-version = "0.4.18"
+version = "0.4.20"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -90,7 +90,7 @@ secrets-provider-inmemory = { version = "0.1", path = "components/secrets-provid
 greentic-types = { version = "0.4", features = ["telemetry-autoinit"] }
 url = "2"
 uuid = "1"
-wit-bindgen = "0.51"
+wit-bindgen = "0.52"
 wasmtime = { version = "41", features = ["cranelift"] }
 wasmparser = { version = "0.244.0", default-features = false, features = ["component-model"] }
 wat = "1"
