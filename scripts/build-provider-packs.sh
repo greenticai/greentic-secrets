@@ -5,8 +5,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
-rm -rf "$OUT_DIR"
-mkdir -p "$OUT_DIR"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 
@@ -30,17 +28,19 @@ providers=(
 )
 built_gtpacks=()
 
-bundle_staging="${OUT_DIR}/secrets-providers"
-rm -rf "${bundle_staging}"
-mkdir -p "${bundle_staging}"
-bundle_deps="${bundle_staging}/deps.tmp"
-: > "${bundle_deps}"
-
 echo "Building provider packs for version ${VERSION}"
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
 fi
+
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR"
+bundle_staging="${OUT_DIR}/secrets-providers"
+rm -rf "${bundle_staging}"
+mkdir -p "${bundle_staging}"
+bundle_deps="${bundle_staging}/deps.tmp"
+: > "${bundle_deps}"
 
 for slug in "${providers[@]}"; do
   src="${ROOT_DIR}/packs/${slug}"
