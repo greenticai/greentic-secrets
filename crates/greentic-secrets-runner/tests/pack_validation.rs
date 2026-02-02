@@ -301,15 +301,7 @@ fn minimal_fixture_pack_validates() {
         .expect("run greentic-pack build");
     assert!(status.success(), "greentic-pack build failed");
 
-    let validator_pack = repo_root.join("dist").join("validators-secrets.gtpack");
-    if !validator_pack.exists() {
-        let status = Command::new("bash")
-            .arg("scripts/build-validator-pack.sh")
-            .current_dir(repo_root)
-            .status()
-            .expect("build validator pack");
-        assert!(status.success(), "build-validator-pack.sh failed");
-    }
+    let validator_pack = build_validator_pack(repo_root, &staging_root);
 
     let status = Command::new("greentic-pack")
         .args([
@@ -343,6 +335,99 @@ fn read_pack_member(pack: &PathBuf, name_suffix: &str) -> Option<Vec<u8>> {
         }
     }
     None
+}
+
+fn build_validator_pack(repo_root: &Path, staging_root: &Path) -> PathBuf {
+    let validator_src = repo_root.join("validators").join("secrets");
+    let validator_staging = staging_root.join("validators-secrets");
+
+    if validator_staging.exists() {
+        fs::remove_dir_all(&validator_staging).expect("remove validator staging");
+    }
+    copy_dir_all(&validator_src, &validator_staging).expect("copy validator source");
+
+    let version = workspace_version(repo_root);
+    inject_version(&validator_staging, &version).expect("inject validator version");
+
+    let staging_str = validator_staging.to_str().expect("validator staging path");
+    let lock_file = validator_staging.join("pack.lock.json");
+    let lock_str = lock_file.to_str().expect("validator lock path");
+
+    let status = Command::new("greentic-pack")
+        .args([
+            "resolve",
+            "--in",
+            staging_str,
+            "--lock",
+            lock_str,
+            "--offline",
+        ])
+        .status()
+        .expect("run greentic-pack resolve for validator");
+    assert!(status.success(), "greentic-pack resolve failed for validator pack");
+
+    let pack_out = validator_staging.join("validators-secrets.gtpack");
+    let pack_out_str = pack_out.to_str().expect("validator pack path");
+    let status = Command::new("greentic-pack")
+        .args([
+            "build",
+            "--in",
+            staging_str,
+            "--lock",
+            lock_str,
+            "--gtpack-out",
+            pack_out_str,
+            "--bundle",
+            "none",
+            "--offline",
+            "--allow-oci-tags",
+        ])
+        .status()
+        .expect("run greentic-pack build for validator");
+    assert!(status.success(), "greentic-pack build failed for validator pack");
+
+    pack_out
+}
+
+fn workspace_version(repo_root: &Path) -> String {
+    let manifest = repo_root.join("Cargo.toml");
+    let content = fs::read_to_string(&manifest).expect("read workspace Cargo.toml");
+    let mut in_section = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[workspace.package]" {
+            in_section = true;
+            continue;
+        }
+        if in_section {
+            if trimmed.starts_with('[') {
+                break;
+            }
+            if let Some(idx) = trimmed.find('=') {
+                let key = trimmed[..idx].trim();
+                if key == "version" {
+                    let value = trimmed[idx + 1..].trim();
+                    return value.trim_matches('"').to_string();
+                }
+            }
+        }
+    }
+    panic!("workspace.package.version not found");
+}
+
+fn inject_version(staging: &Path, version: &str) -> std::io::Result<()> {
+    for file in ["gtpack.yaml", "pack.yaml"] {
+        let path = staging.join(file);
+        if !path.exists() {
+            continue;
+        }
+        let text = fs::read_to_string(&path)?;
+        if text.contains("__PACK_VERSION__") {
+            let replaced = text.replace("__PACK_VERSION__", version);
+            fs::write(&path, replaced)?;
+        }
+    }
+    Ok(())
 }
 
 fn list_pack_entries(pack: &PathBuf) -> Vec<String> {
