@@ -2798,14 +2798,14 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-manifest"
-version = "0.4.48"
+version = "0.4.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b0be7968bd3470bdcbd863feb2fd99bad48264d0e731e80009d04c18ccf392f"
+checksum = "2697600afc0ae2af6b6fd9bce2794ee5bc53c7a0af6077a492735f308d6f31ab"
 dependencies = [
  "greentic-types",
  "jsonschema 0.40.2",
  "regex",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "semver",
  "serde",
  "serde_json",
@@ -2816,9 +2816,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-runtime"
-version = "0.4.48"
+version = "0.4.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1b45c518f8fb9d1afa337b2a6bf5f6ddd89bf07372b60377c4a1849f5abb506"
+checksum = "a93582d3dd588bd31d6c080269a70b0403faeef8c425a4ff1a942dea989a4261"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2845,9 +2845,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-store"
-version = "0.4.48"
+version = "0.4.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4098caac2bcec50f546605ad1eb1147e9d13aabed090ee540427e6790f1f95c9"
+checksum = "58a30fe4a20f9f0bb6f52446dd5740f9c30f9ce03c92e093351628f09675b04c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2901,9 +2901,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces"
-version = "0.4.84"
+version = "0.4.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4d28ecb902408967e9ccc424e6a2b5234663e5ba85659d398e8b2e1c71b16bb"
+checksum = "2d545e49d655be2949ec9bd9854a512290db35a9fc17fdf4b5dbeec071c980fb"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -2918,9 +2918,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-host"
-version = "0.4.84"
+version = "0.4.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "287af7b8a7f1763c76cd459750f87d597f1c7afe20e438d30ee96a38950ffeaa"
+checksum = "6bbe3eefa404e10e2539cdf5eabc2cedd80f07788a4ed4e2004c87213a128774"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -2930,9 +2930,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-wasmtime"
-version = "0.4.84"
+version = "0.4.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b60702ad7dc7aca7ac47ebbac0654acd10b42495417512e8d7d0cc3ac780"
+checksum = "1b161f5b1514fc175801a2df567e122fae96b7a5cc58fe11ddb6d9f26fe95ad5"
 dependencies = [
  "anyhow",
  "camino",
@@ -2946,7 +2946,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2965,6 +2965,7 @@ dependencies = [
  "handlebars",
  "predicates",
  "reqwest 0.13.1",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml_bw",
@@ -2980,7 +2981,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-api"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2989,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-broker"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3014,7 +3015,7 @@ dependencies = [
  "reqwest 0.13.1",
  "ring",
  "rustls 0.23.36",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "serial_test",
@@ -3029,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-conformance"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "azure_core 0.21.0",
@@ -3054,7 +3055,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-core"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-nats",
@@ -3072,7 +3073,7 @@ dependencies = [
  "rand 0.9.2",
  "reqwest 0.13.1",
  "ring",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "sha2",
@@ -3086,7 +3087,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-lib"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "async-trait",
  "futures",
@@ -3104,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-pack-validator"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "greentic-types",
  "wit-bindgen 0.52.0",
@@ -3112,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-aws-sm"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3133,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-azure-kv"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3157,7 +3158,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-dev"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3175,7 +3176,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-gcp-sm"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3191,7 +3192,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-k8s"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3211,7 +3212,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-vault-kv"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3228,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-runner"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "base64 0.22.1",
  "greentic-interfaces",
@@ -3244,11 +3245,11 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-spec"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "async-trait",
  "greentic-types",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_yaml_bw",
@@ -3258,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-test"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3278,7 +3279,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-validate"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "greentic-types",
  "semver",
@@ -3323,7 +3324,7 @@ dependencies = [
  "greentic-types-macros",
  "indexmap 2.12.1",
  "opentelemetry-otlp",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "semver",
  "serde",
  "serde_bytes",
@@ -4262,7 +4263,7 @@ dependencies = [
  "jiff",
  "json-patch",
  "k8s-openapi",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde",
  "serde-value",
  "serde_json",
@@ -6002,9 +6003,9 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54e910108742c57a770f492731f99be216a52fadd361b06c8fb59d74ccc267d2"
+checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
 dependencies = [
  "chrono",
  "dyn-clone",
@@ -6016,9 +6017,9 @@ dependencies = [
 
 [[package]]
 name = "schemars_derive"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4908ad288c5035a8eb12cfdf0d49270def0a268ee162b75eeee0f85d155a7c45"
+checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6150,7 +6151,7 @@ dependencies = [
 
 [[package]]
 name = "secrets-provider-tests"
-version = "0.4.20"
+version = "0.4.21"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6382,7 +6383,7 @@ dependencies = [
  "indexmap 1.9.3",
  "indexmap 2.12.1",
  "schemars 0.9.0",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde_core",
  "serde_json",
  "serde_with_macros",
@@ -8779,9 +8780,9 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1966f8ac2c1f76987d69a74d0e0f929241c10e78136434e3be70ff7f58f64214"
+checksum = "3ff05f8caa9038894637571ae6b9e29466c1f4f829d26c9b28f869a29cbe3445"
 
 [[package]]
 name = "zstd"

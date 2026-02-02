@@ -16,6 +16,7 @@ clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+semver = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 greentic_secrets_core = { workspace = true, features = ["dev-store"] }
 greentic_secrets_spec = { workspace = true }

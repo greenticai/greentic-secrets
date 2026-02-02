@@ -77,6 +77,10 @@ greentic-secrets ctx set --env dev --tenant example --team _
 # (JSON/YAML or .gtpack zip with metadata.json or assets/secret-requirements.json)
 greentic-secrets scaffold --pack path/to/pack.gtpack --out seeds.yaml
 
+# When bootstrapping from a `.gtpack`, the scaffolded URIs now use the pack_id
+# (e.g., `secrets://dev/example/_/greentic.secrets.aws-sm/db_url`) as the category
+# segment so each pack's secrets remain grouped by its identifier.
+
 # Fill interactively (or use --from-dotenv)
 greentic-secrets wizard -i seeds.yaml -o seeds.yaml
 

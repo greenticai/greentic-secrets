@@ -34,8 +34,16 @@ impl DevContext {
 
 /// Resolve a requirement into a concrete URI for dev flows.
 pub fn resolve_uri(ctx: &DevContext, req: &SecretRequirement) -> String {
+    resolve_uri_with_category(ctx, req, "configs")
+}
+
+pub fn resolve_uri_with_category(
+    ctx: &DevContext,
+    req: &SecretRequirement,
+    default_category: &str,
+) -> String {
     let team = ctx.team.as_deref().unwrap_or("_");
-    let key = normalize_req_key(req.key.as_str());
+    let key = normalize_req_key(req.key.as_str(), default_category);
     format!("secrets://{}/{}/{}/{}", ctx.env, ctx.tenant, team, key)
 }
 
@@ -165,16 +173,17 @@ fn find_requirement<'a>(
 ) -> Option<&'a SecretRequirement> {
     let key = format!("{}/{}", uri.category(), uri.name());
     requirements.iter().find(|req| {
-        normalize_req_key(req.key.as_str()) == key && scopes_match(uri.scope(), req.scope.as_ref())
+        normalize_req_key(req.key.as_str(), uri.category()) == key
+            && scopes_match(uri.scope(), req.scope.as_ref())
     })
 }
 
-fn normalize_req_key(key: &str) -> String {
+fn normalize_req_key(key: &str, default_category: &str) -> String {
     let normalized = key.to_ascii_lowercase();
     if normalized.contains('/') {
         normalized
     } else {
-        format!("configs/{normalized}")
+        format!("{default_category}/{normalized}")
     }
 }
 
@@ -474,6 +483,15 @@ mod tests {
         req.format = Some(SecretFormat::Text);
         let uri = resolve_uri(&ctx, &req);
         assert_eq!(uri, "secrets://dev/acme/_/configs/db");
+    }
+
+    #[test]
+    fn resolve_uri_respects_custom_category() {
+        let ctx = DevContext::new("dev", "acme", None);
+        let mut req = SecretRequirement::default();
+        req.key = greentic_types::secrets::SecretKey::parse("db").unwrap();
+        let uri = resolve_uri_with_category(&ctx, &req, "greentic.secrets.fixture");
+        assert_eq!(uri, "secrets://dev/acme/_/greentic.secrets.fixture/db");
     }
 
     #[tokio::test]

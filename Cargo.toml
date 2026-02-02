@@ -31,7 +31,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
-version = "0.4.20"
+version = "0.4.21"
 
 [workspace.dependencies]
 anyhow = "1"

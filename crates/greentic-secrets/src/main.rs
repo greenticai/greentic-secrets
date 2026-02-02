@@ -8,14 +8,15 @@ use greentic_config::{CliOverrides as ConfigOverrides, ConfigResolver, ResolvedC
 use greentic_config_types::{EnvId, GreenticConfig, NetworkConfig, TlsMode};
 use greentic_secrets_core::seed::{
     ApplyOptions, ApplyReport, DevContext, DevStore, HttpStore, SecretsStore, apply_seed,
-    resolve_uri,
+    resolve_uri_with_category,
 };
 use greentic_secrets_core::types::Visibility;
 use greentic_secrets_spec::{SeedDoc, SeedEntry, SeedValue};
+use greentic_types::decode_pack_manifest;
 use greentic_types::secrets::{SecretFormat, SecretRequirement};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -569,9 +570,11 @@ fn handle_scaffold(cmd: ScaffoldCmd, resolved: &ResolvedConfig) -> Result<()> {
         },
     )?;
     let requirements = read_pack_requirements(&cmd.pack)?;
+    let category = requirements.pack_id.as_deref().unwrap_or("configs");
     let entries = requirements
+        .secret_requirements
         .iter()
-        .map(|req| scaffold_entry(&ctx, req))
+        .map(|req| scaffold_entry(&ctx, req, category))
         .collect();
     let doc = SeedDoc { entries };
     write_seed(&doc, &cmd.out)?;
@@ -620,7 +623,7 @@ fn handle_wizard(cmd: WizardCmd, _resolved: &ResolvedConfig) -> Result<()> {
 fn handle_apply(cmd: ApplyCmd, resolved: &ResolvedConfig) -> Result<()> {
     let seed = read_seed(&cmd.file)?;
     let requirements = match cmd.pack {
-        Some(path) => Some(read_pack_requirements(&path)?),
+        Some(path) => Some(read_pack_requirements(&path)?.secret_requirements),
         None => None,
     };
     let store: Box<dyn SecretsStore> = match cmd.broker_url {
@@ -737,10 +740,11 @@ fn handle_init(cmd: InitCmd, resolved: &ResolvedConfig) -> Result<()> {
     )
 }
 
-fn scaffold_entry(ctx: &CtxFile, req: &SecretRequirement) -> SeedEntry {
-    let uri = resolve_uri(
+fn scaffold_entry(ctx: &CtxFile, req: &SecretRequirement, category: &str) -> SeedEntry {
+    let uri = resolve_uri_with_category(
         &DevContext::new(&ctx.env, &ctx.tenant, ctx.team.clone()),
         req,
+        category,
     );
     let placeholder = placeholder_value(req);
     let format = req.format.clone().unwrap_or(SecretFormat::Text);
@@ -782,7 +786,7 @@ fn placeholder_value(req: &SecretRequirement) -> SeedValue {
     }
 }
 
-fn read_pack_requirements(path: &Path) -> Result<Vec<SecretRequirement>> {
+fn read_pack_requirements(path: &Path) -> Result<PackRequirements> {
     let bytes =
         fs::read(path).with_context(|| format!("failed to read pack {}", path.display()))?;
 
@@ -791,15 +795,28 @@ fn read_pack_requirements(path: &Path) -> Result<Vec<SecretRequirement>> {
     }
 
     if let Ok(meta) = serde_json::from_slice::<PackMetadata>(&bytes) {
-        return Ok(meta.secret_requirements);
+        return Ok(PackRequirements {
+            secret_requirements: meta.secret_requirements,
+            pack_id: meta.pack_id,
+        });
     }
     let meta: PackMetadata =
         serde_yaml::from_slice(&bytes).context("pack is not valid JSON/YAML or .gtpack zip")?;
-    Ok(meta.secret_requirements)
+    Ok(PackRequirements {
+        secret_requirements: meta.secret_requirements,
+        pack_id: meta.pack_id,
+    })
+}
+
+struct PackRequirements {
+    secret_requirements: Vec<SecretRequirement>,
+    pack_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct PackMetadata {
+    #[serde(default)]
+    pack_id: Option<String>,
     #[serde(default)]
     secret_requirements: Vec<SecretRequirement>,
 }
@@ -993,7 +1010,7 @@ fn looks_like_zip(bytes: &[u8]) -> bool {
     bytes.first() == Some(&b'P') && bytes.get(1) == Some(&b'K')
 }
 
-fn read_gtpack_zip(bytes: &[u8]) -> Result<Vec<SecretRequirement>> {
+fn read_gtpack_zip(bytes: &[u8]) -> Result<PackRequirements> {
     let cursor = io::Cursor::new(bytes);
     let mut archive = ZipArchive::new(cursor).context("failed to open gtpack zip")?;
     let mut last_err: Option<anyhow::Error> = None;
@@ -1004,7 +1021,13 @@ fn read_gtpack_zip(bytes: &[u8]) -> Result<Vec<SecretRequirement>> {
         "secret_requirements.json",
     ] {
         match read_requirements_from_zip(&mut archive, name) {
-            Ok(Some(reqs)) => return Ok(reqs),
+            Ok(Some(reqs)) => {
+                let pack_id = read_pack_id_from_archive(&mut archive);
+                return Ok(PackRequirements {
+                    secret_requirements: reqs,
+                    pack_id,
+                });
+            }
             Ok(None) => {}
             Err(err) => {
                 last_err = Some(err);
@@ -1017,26 +1040,77 @@ fn read_gtpack_zip(bytes: &[u8]) -> Result<Vec<SecretRequirement>> {
         "pack/metadata.json",
         "gtpack/metadata.json",
     ] {
-        match archive.by_name(name) {
+        let data = match archive.by_name(name) {
             Ok(mut file) => {
-                let mut data = String::new();
-                io::Read::read_to_string(&mut file, &mut data)
+                let mut buffer = String::new();
+                io::Read::read_to_string(&mut file, &mut buffer)
                     .context("failed to read metadata from gtpack")?;
-                let meta: PackMetadata =
-                    serde_json::from_str(&data).context("gtpack metadata is not valid JSON")?;
-                return Ok(meta.secret_requirements);
+                Some(buffer)
             }
             Err(err) => {
                 last_err = Some(err.into());
+                None
             }
+        };
+
+        if let Some(data) = data {
+            let mut meta: PackMetadata =
+                serde_json::from_str(&data).context("gtpack metadata is not valid JSON")?;
+            let pack_id = read_pack_id_from_archive(&mut archive).or(meta.pack_id.take());
+            return Ok(PackRequirements {
+                secret_requirements: meta.secret_requirements,
+                pack_id,
+            });
         }
     }
-    if archive.by_name("manifest.cbor").is_ok() {
-        return Ok(Vec::new());
+    let pack_id = read_pack_id_from_archive(&mut archive);
+    if pack_id.is_some() {
+        return Ok(PackRequirements {
+            secret_requirements: Vec::new(),
+            pack_id,
+        });
     }
     Err(anyhow::anyhow!(
         "gtpack missing metadata or secret requirements ({last_err:?})"
     ))
+}
+
+fn read_pack_id_from_archive(archive: &mut ZipArchive<io::Cursor<&[u8]>>) -> Option<String> {
+    for name in &["manifest.cbor", "assets/manifest.cbor"] {
+        if let Some(id) = read_pack_id_from_manifest(archive, name) {
+            return Some(id);
+        }
+    }
+    for name in &["pack.json", "assets/pack.json"] {
+        if let Some(id) = read_pack_id_from_pack_json(archive, name) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+fn read_pack_id_from_manifest(
+    archive: &mut ZipArchive<io::Cursor<&[u8]>>,
+    name: &str,
+) -> Option<String> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut data = Vec::new();
+    io::Read::read_to_end(&mut file, &mut data).ok()?;
+    decode_pack_manifest(&data)
+        .ok()
+        .map(|manifest| manifest.pack_id.to_string())
+}
+
+fn read_pack_id_from_pack_json(
+    archive: &mut ZipArchive<io::Cursor<&[u8]>>,
+    name: &str,
+) -> Option<String> {
+    let mut file = archive.by_name(name).ok()?;
+    let mut data = String::new();
+    io::Read::read_to_string(&mut file, &mut data).ok()?;
+    serde_json::from_str::<Value>(&data)
+        .ok()
+        .and_then(|value| value.get("id")?.as_str().map(|id| id.to_string()))
 }
 
 fn read_requirements_from_zip(
@@ -1053,4 +1127,81 @@ fn read_requirements_from_zip(
     let reqs: Vec<SecretRequirement> =
         serde_json::from_slice(&data).context("gtpack secret requirements are not valid JSON")?;
     Ok(Some(reqs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use greentic_types::pack_manifest::{PackKind, PackManifest, PackSignatures};
+    use greentic_types::{PackId, encode_pack_manifest};
+    use semver::Version;
+    use std::fs::File;
+    use std::path::Path;
+    use tempfile::tempdir;
+    use zip::write::{FileOptions, ZipWriter};
+
+    #[test]
+    fn read_pack_requirements_reads_pack_id_from_manifest() -> Result<()> {
+        let temp = tempdir().context("create tempdir")?;
+        let pack_path = temp.path().join("fixture.gtpack");
+        write_test_gtpack(&pack_path, "greentic.secrets.fixture")?;
+
+        let requirements = read_pack_requirements(&pack_path)?;
+        assert_eq!(
+            requirements.pack_id.as_deref(),
+            Some("greentic.secrets.fixture")
+        );
+        assert_eq!(requirements.secret_requirements.len(), 1);
+        assert_eq!(requirements.secret_requirements[0].key.as_str(), "api_key");
+        Ok(())
+    }
+
+    #[test]
+    fn scaffold_entry_respects_pack_id_category() {
+        let ctx = CtxFile {
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: None,
+        };
+        let mut req = SecretRequirement::default();
+        req.key = greentic_types::secrets::SecretKey::parse("api_key").unwrap();
+
+        let entry = scaffold_entry(&ctx, &req, "greentic.secrets.fixture");
+        assert_eq!(
+            entry.uri,
+            "secrets://dev/acme/_/greentic.secrets.fixture/api_key"
+        );
+    }
+
+    fn write_test_gtpack(path: &Path, pack_id: &str) -> Result<()> {
+        let pack_id = PackId::new(pack_id).map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        let manifest = PackManifest {
+            schema_version: "1".to_string(),
+            pack_id,
+            name: None,
+            version: Version::parse("0.1.0").unwrap(),
+            kind: PackKind::Provider,
+            publisher: "greentic".into(),
+            components: Vec::new(),
+            flows: Vec::new(),
+            dependencies: Vec::new(),
+            capabilities: Vec::new(),
+            secret_requirements: Vec::new(),
+            signatures: PackSignatures::default(),
+            bootstrap: None,
+            extensions: None,
+        };
+        let manifest_bytes = encode_pack_manifest(&manifest)?;
+
+        let file = File::create(path)?;
+        let mut zip = ZipWriter::new(file);
+        let opts = FileOptions::default();
+        zip.start_file("manifest.cbor", opts)?;
+        zip.write_all(&manifest_bytes)?;
+        zip.start_file("assets/secret_requirements.json", opts)?;
+        zip.write_all(br#"[{"key":"api_key","required":true}]"#)?;
+        zip.finish()?;
+        Ok(())
+    }
 }
