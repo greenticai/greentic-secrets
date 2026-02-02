@@ -6,7 +6,7 @@ impl SecretDescribable for TelegramSecrets {
     fn secret_specs() -> &'static [SecretSpec] {
         &[SecretSpec {
             name: "TELEGRAM_TOKEN",
-            description: Some("Bot token from @BotFather (format: 1234567890:AA...)")
+            description: Some("Bot token from @BotFather (format: 1234567890:AA...)"),
         }]
     }
 }

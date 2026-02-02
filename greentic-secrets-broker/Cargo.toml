@@ -14,8 +14,8 @@ include = [
     "README.md",
     "LICENSE",
     "Cargo.toml",
-    "../examples/plugins/telegram_secrets.rs",
-    "../examples/plugins/weather_secrets.rs",
+    "examples/plugins/telegram_secrets.rs",
+    "examples/plugins/weather_secrets.rs",
 ]
 
 [lib]

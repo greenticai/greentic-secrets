@@ -5,11 +5,11 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use secrets_core::{CoreBuilder, SecretDescribable, SecretSpecRegistry};
 
 mod telegram {
-    include!("../../../examples/plugins/telegram_secrets.rs");
+    include!("../../examples/plugins/telegram_secrets.rs");
 }
 
 mod weather {
-    include!("../../../examples/plugins/weather_secrets.rs");
+    include!("../../examples/plugins/weather_secrets.rs");
 }
 
 #[derive(Parser)]

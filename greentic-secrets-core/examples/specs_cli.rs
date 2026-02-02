@@ -4,10 +4,10 @@ use secrets_core::{SecretDescribable, SecretSpecRegistry, SecretsCore};
 use tokio::runtime::Runtime;
 
 mod telegram {
-    include!("../../examples/plugins/telegram_secrets.rs");
+    include!("plugins/telegram_secrets.rs");
 }
 mod weather {
-    include!("../../examples/plugins/weather_secrets.rs");
+    include!("plugins/weather_secrets.rs");
 }
 
 fn main() -> anyhow::Result<()> {
