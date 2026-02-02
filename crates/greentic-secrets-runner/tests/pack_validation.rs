@@ -364,7 +364,10 @@ fn build_validator_pack(repo_root: &Path, staging_root: &Path) -> PathBuf {
         ])
         .status()
         .expect("run greentic-pack resolve for validator");
-    assert!(status.success(), "greentic-pack resolve failed for validator pack");
+    assert!(
+        status.success(),
+        "greentic-pack resolve failed for validator pack"
+    );
 
     let pack_out = validator_staging.join("validators-secrets.gtpack");
     let pack_out_str = pack_out.to_str().expect("validator pack path");
@@ -384,7 +387,10 @@ fn build_validator_pack(repo_root: &Path, staging_root: &Path) -> PathBuf {
         ])
         .status()
         .expect("run greentic-pack build for validator");
-    assert!(status.success(), "greentic-pack build failed for validator pack");
+    assert!(
+        status.success(),
+        "greentic-pack build failed for validator pack"
+    );
 
     pack_out
 }
