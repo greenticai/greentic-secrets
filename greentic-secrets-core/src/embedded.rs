@@ -106,7 +106,6 @@ impl BackendRegistration {
 }
 
 /// Builder for constructing [`SecretsCore`] instances.
-#[derive(Default)]
 pub struct CoreBuilder {
     tenant: Option<String>,
     team: Option<String>,
@@ -115,6 +114,22 @@ pub struct CoreBuilder {
     backends: Vec<BackendRegistration>,
     policy: Option<Policy>,
     cache_capacity: Option<usize>,
+    dev_backend_enabled: bool,
+}
+
+impl Default for CoreBuilder {
+    fn default() -> Self {
+        Self {
+            tenant: None,
+            team: None,
+            default_ttl: None,
+            nats_url: None,
+            backends: Vec::new(),
+            policy: None,
+            cache_capacity: None,
+            dev_backend_enabled: true,
+        }
+    }
 }
 
 impl CoreBuilder {
@@ -155,10 +170,7 @@ impl CoreBuilder {
         let dev_enabled = std::env::var("GREENTIC_SECRETS_DEV")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
             .unwrap_or(true);
-
-        if dev_enabled {
-            builder.backends.push(BackendRegistration::memory());
-        }
+        builder.dev_backend_enabled = dev_enabled;
 
         builder
     }
@@ -313,7 +325,13 @@ impl CoreBuilder {
     /// Build the [`SecretsCore`] instance.
     pub async fn build(mut self) -> Result<SecretsCore, SecretsError> {
         if self.backends.is_empty() {
-            self.backends.push(BackendRegistration::memory());
+            if self.dev_backend_enabled {
+                self.backends.push(BackendRegistration::memory());
+            } else {
+                return Err(SecretsError::Builder(
+                    "no backend registered and GREENTIC_SECRETS_DEV=0".to_string(),
+                ));
+            }
         }
 
         let tenant = self.tenant.unwrap_or_else(|| "default".to_string());
@@ -900,7 +918,13 @@ mod tests {
 
         let builder = CoreBuilder::from_env();
         assert!(builder.tenant.is_none());
-        assert_eq!(builder.backends.len(), 1);
+        assert!(builder.backends.is_empty());
+        assert!(builder.dev_backend_enabled);
+
+        rt().block_on(async {
+            let core = builder.build().await.unwrap();
+            assert_eq!(core.config().backends.len(), 1);
+        });
     }
 
     #[test]
