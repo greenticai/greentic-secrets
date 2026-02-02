@@ -2946,7 +2946,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2981,7 +2981,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-api"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2990,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-broker"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3030,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-conformance"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "azure_core 0.21.0",
@@ -3055,7 +3055,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-core"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-nats",
@@ -3087,7 +3087,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-lib"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "async-trait",
  "futures",
@@ -3105,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-pack-validator"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "greentic-types",
  "wit-bindgen 0.52.0",
@@ -3113,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-aws-sm"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3134,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-azure-kv"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3158,7 +3158,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-dev"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3176,7 +3176,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-gcp-sm"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3192,7 +3192,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-k8s"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3212,7 +3212,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-vault-kv"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3229,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-runner"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "base64 0.22.1",
  "greentic-interfaces",
@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-spec"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "async-trait",
  "greentic-types",
@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-test"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3279,7 +3279,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-validate"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "greentic-types",
  "semver",
@@ -6151,7 +6151,7 @@ dependencies = [
 
 [[package]]
 name = "secrets-provider-tests"
-version = "0.4.21"
+version = "0.4.22"
 dependencies = [
  "anyhow",
  "async-trait",
