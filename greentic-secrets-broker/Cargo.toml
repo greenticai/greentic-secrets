@@ -9,7 +9,14 @@ readme = "README.md"
 documentation = "https://docs.rs/greentic-secrets-broker"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
 categories = ["config", "authentication", "cryptography"]
-include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
+include = [
+    "src/**",
+    "README.md",
+    "LICENSE",
+    "Cargo.toml",
+    "examples/plugins/telegram_secrets.rs",
+    "examples/plugins/weather_secrets.rs",
+]
 
 [lib]
 name = "secrets_broker"
