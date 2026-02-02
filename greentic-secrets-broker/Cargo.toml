@@ -10,7 +10,6 @@ documentation = "https://docs.rs/greentic-secrets-broker"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
 categories = ["config", "authentication", "cryptography"]
 include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
-publish = false
 
 [lib]
 name = "secrets_broker"
