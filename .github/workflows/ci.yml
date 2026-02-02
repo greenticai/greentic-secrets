@@ -69,4 +69,4 @@ jobs:
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
       - name: Run secrets pack conformance (dry-run)
-        run: cargo run -p greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
+        run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
