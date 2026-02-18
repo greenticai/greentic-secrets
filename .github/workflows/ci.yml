@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  packages: read
 jobs:
   fast:
     runs-on: ubuntu-latest
@@ -64,8 +65,17 @@ jobs:
         run: |
           cargo install greentic-pack --version 0.4.16
           cargo install greentic-provision --version 0.4.16
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures

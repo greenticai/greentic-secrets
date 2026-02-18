@@ -124,6 +124,9 @@ jobs:
   secrets-pack-dry-run:
     needs: tools
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90
@@ -139,6 +142,14 @@ jobs:
           chmod +x "$HOME/.cargo/bin/greentic-pack" "$HOME/.cargo/bin/greentic-provision"
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y zip yq
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
           REGISTRY_OWNER: ${{ github.repository_owner }}
@@ -230,11 +241,6 @@ jobs:
         run: cargo test -p greentic-secrets-runner pack_validation
       - name: Validate packs
         run: ./scripts/validate-packs.sh
-      - name: Build provider packs
-        env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
-          PACK_OFFLINE: "0"
-        run: ./scripts/build-provider-packs.sh
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
       - name: Login to GHCR
@@ -243,6 +249,11 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+      - name: Build provider packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
+        run: ./scripts/build-provider-packs.sh
       - name: Write bundle descriptor for store compatibility
         run: |
           VERSION=$(cat dist/packs/VERSION)

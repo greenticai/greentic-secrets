@@ -46,12 +46,6 @@ jobs:
       - name: Validate packs
         run: ./scripts/validate-packs.sh
 
-      - name: Build provider packs
-        env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
-          PACK_OFFLINE: "0"
-        run: ./scripts/build-provider-packs.sh
-
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
 
@@ -61,6 +55,12 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+      - name: Build provider packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
+        run: ./scripts/build-provider-packs.sh
 
       - name: Write bundle descriptor for store compatibility
         run: |
