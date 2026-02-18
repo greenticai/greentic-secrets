@@ -820,7 +820,7 @@ impl MemoryKeyProvider {
             .or_insert_with(|| {
                 let mut buf = vec![0u8; 32];
                 let mut rng = rand::rng();
-                use rand::RngCore;
+                use rand::Rng;
                 rng.fill_bytes(&mut buf);
                 buf
             })

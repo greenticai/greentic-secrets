@@ -1,4 +1,4 @@
-use rand::RngCore;
+use rand::Rng;
 
 pub fn random_bytes(size: usize) -> Vec<u8> {
     let mut buf = vec![0u8; size];

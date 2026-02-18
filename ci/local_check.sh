@@ -30,6 +30,7 @@ if [[ "$LOCAL_CHECK_VERBOSE" == "1" ]]; then
 fi
 
 export RUST_BACKTRACE=1
+REQUIRED_RUSTC_SERIES="${REQUIRED_RUSTC_SERIES:-1.90}"
 
 SKIPPED_STEPS=()
 KIND_CLUSTER=""
@@ -157,6 +158,17 @@ ensure_core_tool cargo
 ensure_core_tool rustc
 
 print_tool_versions
+
+ensure_rustc_series() {
+  local rustc_version
+  rustc_version="$(rustc --version | awk '{print $2}')"
+  if [[ "$rustc_version" != "${REQUIRED_RUSTC_SERIES}".* ]]; then
+    echo "[fail] rustc ${REQUIRED_RUSTC_SERIES}.x is required (found ${rustc_version})" >&2
+    exit 1
+  fi
+}
+
+ensure_rustc_series
 
 check_provider_blocking_guards() {
   step "Guard: providers avoid blocking HTTP/runtime APIs"

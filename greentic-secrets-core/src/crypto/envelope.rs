@@ -6,7 +6,7 @@ use crate::spec_compat::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use hkdf::Hkdf;
-use rand::RngCore;
+use rand::Rng;
 #[cfg(feature = "crypto-ring")]
 use ring::{
     aead,
