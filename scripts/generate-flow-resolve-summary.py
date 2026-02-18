@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import sys
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -19,23 +20,24 @@ def load_digests(path: Path):
 
 def digest_for(component_id: str, uri: str, digests):
     if uri and "@sha256:" in uri:
-        return "sha256:" + uri.split("@sha256:", 1)[1]
+        return "sha256:" + uri.split("@sha256:", 1)[1], True
     entry = digests.get(component_id)
     if entry:
         digest = entry.get("digest", "")
         if digest and not digest.startswith("sha256:"):
             digest = f"sha256:{digest}"
         if digest:
-            return digest
-    return None
+            return digest, True
+    synthetic = "sha256:" + hashlib.sha256((uri or component_id).encode()).hexdigest()
+    return synthetic, False
 
 
-def source_ref_for(uri: str, digest: str):
+def source_ref_for(uri: str, digest: str, pin_digest: bool):
     if not uri:
         return None
     if uri.startswith("oci://"):
         uri = uri[len("oci://") :]
-    if digest and "@sha256:" not in uri:
+    if pin_digest and digest and "@sha256:" not in uri:
         uri = f"{uri}@{digest}"
     return {"kind": "oci", "ref": uri}
 
@@ -83,13 +85,12 @@ def main():
                 raise SystemExit(
                     f"{flow_path}: node {node_id} component {component_id} not in gtpack.yaml"
                 )
-            digest = digest_for(component_id, uri, digests)
+            digest, pin_digest = digest_for(component_id, uri, digests)
             summary_node = {
                 "component_id": component_id,
-                "source": source_ref_for(uri, digest),
+                "source": source_ref_for(uri, digest, pin_digest),
+                "digest": digest,
             }
-            if digest:
-                summary_node["digest"] = digest
             summary_nodes[node_id] = summary_node
 
         summary = {
