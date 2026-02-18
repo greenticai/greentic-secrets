@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
 import sys
+import hashlib
+import re
 from pathlib import Path
 
 import yaml
@@ -17,19 +19,35 @@ def load_digests(path: Path):
     return {entry["id"]: entry for entry in data}
 
 
+_DIGEST_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def normalize_sha256_digest(raw: str):
+    if not raw:
+        return None
+    value = raw.strip()
+    if value.startswith("sha256:"):
+        value = value[len("sha256:") :]
+    value = value.lower()
+    if _DIGEST_HEX_RE.fullmatch(value):
+        return f"sha256:{value}"
+    return None
+
+
 def digest_for(component_id: str, uri: str, digests):
     if uri and "@sha256:" in uri:
-        return "sha256:" + uri.split("@sha256:", 1)[1], True
+        normalized = normalize_sha256_digest(uri.split("@sha256:", 1)[1])
+        if normalized:
+            return normalized, True
     entry = digests.get(component_id)
     if entry:
-        digest = entry.get("digest", "")
-        if digest and not digest.startswith("sha256:"):
-            digest = f"sha256:{digest}"
-        if digest:
-            return digest, True
-    # Keep `digest` present for schema compatibility, but avoid forcing
-    # digest-pinned OCI resolution when no trusted digest is available.
-    return "", False
+        normalized = normalize_sha256_digest(entry.get("digest", ""))
+        if normalized:
+            return normalized, True
+    # Keep `digest` present for schema compatibility using a deterministic
+    # placeholder, but avoid pinning source.ref when it is not trusted.
+    synthetic = "sha256:" + hashlib.sha256((uri or component_id).encode()).hexdigest()
+    return synthetic, False
 
 
 def source_ref_for(uri: str, digest: str, pin_digest: bool):

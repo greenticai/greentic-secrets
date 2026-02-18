@@ -90,7 +90,10 @@ for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
     if d:
-        comp["uri"] = f"{d['ref']}@sha256:{d['digest']}"
+        digest = str(d.get("digest", "")).strip()
+        if digest.startswith("sha256:"):
+            digest = digest[len("sha256:"):]
+        comp["uri"] = f"{d['ref']}@sha256:{digest}"
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"
