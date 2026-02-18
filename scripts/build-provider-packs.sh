@@ -7,6 +7,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
+components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -29,6 +32,7 @@ providers=(
 built_gtpacks=()
 
 echo "Building provider packs for version ${VERSION}"
+echo "Components registry namespace: ${components_registry}"
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
@@ -62,6 +66,10 @@ for slug in "${providers[@]}"; do
       rm -f "${staging}/${file}.bak"
     fi
   done
+
+  # Rewrite default component namespace so forks/orgs resolve correctly.
+  sed -i.bak "s|ghcr.io/greentic-ai/components|${components_registry}|g" "${staging}/gtpack.yaml"
+  rm -f "${staging}/gtpack.yaml.bak"
 
   # If digests are available, rewrite component URIs to pin them.
   if [[ -f "${DIGESTS_JSON}" ]]; then

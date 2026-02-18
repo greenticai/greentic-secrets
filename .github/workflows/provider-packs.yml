@@ -47,6 +47,8 @@ jobs:
         run: ./scripts/validate-packs.sh
 
       - name: Build provider packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: ./scripts/build-provider-packs.sh
 
       - name: Set up ORAS

@@ -27,7 +27,7 @@ def digest_for(component_id: str, uri: str, digests):
             digest = f"sha256:{digest}"
         if digest:
             return digest
-    return "sha256:" + ("0" * 64)
+    return None
 
 
 def source_ref_for(uri: str, digest: str):
@@ -84,11 +84,13 @@ def main():
                     f"{flow_path}: node {node_id} component {component_id} not in gtpack.yaml"
                 )
             digest = digest_for(component_id, uri, digests)
-            summary_nodes[node_id] = {
+            summary_node = {
                 "component_id": component_id,
                 "source": source_ref_for(uri, digest),
-                "digest": digest,
             }
+            if digest:
+                summary_node["digest"] = digest
+            summary_nodes[node_id] = summary_node
 
         summary = {
             "schema_version": 1,

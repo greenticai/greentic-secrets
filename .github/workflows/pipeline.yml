@@ -140,6 +140,8 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y zip yq
       - name: Build provider packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
@@ -228,6 +230,8 @@ jobs:
       - name: Validate packs
         run: ./scripts/validate-packs.sh
       - name: Build provider packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: ./scripts/build-provider-packs.sh
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
