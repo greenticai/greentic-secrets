@@ -5,6 +5,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIGESTS="${ROOT_DIR}/target/components/digests.json"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
+export COMPONENTS_REGISTRY="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 
 "${ROOT_DIR}/scripts/build-components.sh"
 

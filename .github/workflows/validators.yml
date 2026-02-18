@@ -32,6 +32,8 @@ jobs:
           echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
 
       - name: Publish validator component to GHCR
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: ./scripts/publish-validators.sh
 
       - name: Build validator pack
