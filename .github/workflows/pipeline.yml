@@ -142,6 +142,7 @@ jobs:
       - name: Build provider packs
         env:
           REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
@@ -232,6 +233,7 @@ jobs:
       - name: Build provider packs
         env:
           REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1

@@ -140,7 +140,9 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
         let combined = format!("{stdout}\n{stderr}");
         // Local/offline runs may not have OCI component blobs cached.
         // Treat this as an environment skip instead of a product failure.
-        if combined.contains("offline cache miss for oci://ghcr.io/greentic-ai/components/") {
+        if combined.contains("offline cache miss for oci://ghcr.io/")
+            && combined.contains("/components/")
+        {
             eprintln!(
                 "skipping built_provider_gtpacks_embed_canonical_provider_extension: missing offline OCI component cache"
             );

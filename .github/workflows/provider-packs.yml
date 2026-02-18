@@ -49,6 +49,7 @@ jobs:
       - name: Build provider packs
         env:
           REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
 
       - name: Set up ORAS

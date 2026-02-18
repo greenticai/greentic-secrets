@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import sys
-import hashlib
 from pathlib import Path
 
 import yaml
@@ -28,8 +27,9 @@ def digest_for(component_id: str, uri: str, digests):
             digest = f"sha256:{digest}"
         if digest:
             return digest, True
-    synthetic = "sha256:" + hashlib.sha256((uri or component_id).encode()).hexdigest()
-    return synthetic, False
+    # Keep `digest` present for schema compatibility, but avoid forcing
+    # digest-pinned OCI resolution when no trusted digest is available.
+    return "", False
 
 
 def source_ref_for(uri: str, digest: str, pin_digest: bool):

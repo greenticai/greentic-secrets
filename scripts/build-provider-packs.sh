@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
+PACK_OFFLINE="${PACK_OFFLINE:-1}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
@@ -33,6 +34,13 @@ built_gtpacks=()
 
 echo "Building provider packs for version ${VERSION}"
 echo "Components registry namespace: ${components_registry}"
+if [[ "${PACK_OFFLINE}" == "1" ]]; then
+  PACK_MODE_ARGS=(--offline)
+  echo "Pack mode: offline"
+else
+  PACK_MODE_ARGS=()
+  echo "Pack mode: online"
+fi
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
@@ -91,19 +99,19 @@ PY
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
   LOCK_FILE="${staging}/pack.lock.json"
-  greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" --offline
+  greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
   greentic-pack build \
     --in "${staging}" \
     --lock "${LOCK_FILE}" \
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
     --bundle none \
-    --offline \
+    "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
   greentic-pack doctor \
     --validate \
     --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
     --validator-pack "${VALIDATOR_PACK}" \
-    --offline \
+    "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
 
   echo "::notice::built pack secrets-${slug}.gtpack"
@@ -138,19 +146,19 @@ EOF
 rm -f "${bundle_staging}/deps.tmp"
 
 LOCK_FILE="${bundle_staging}/pack.lock.json"
-greentic-pack resolve --in "${bundle_staging}" --lock "${LOCK_FILE}" --offline
+greentic-pack resolve --in "${bundle_staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
 greentic-pack build \
   --in "${bundle_staging}" \
   --lock "${LOCK_FILE}" \
   --gtpack-out "${OUT_DIR}/secrets-providers.gtpack" \
   --bundle none \
-  --offline \
+  "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
 greentic-pack doctor \
   --validate \
   --pack "${OUT_DIR}/secrets-providers.gtpack" \
   --validator-pack "${VALIDATOR_PACK}" \
-  --offline \
+  "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
 
 echo "::notice::built bundle pack secrets-providers.gtpack"

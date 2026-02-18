@@ -65,6 +65,8 @@ jobs:
           cargo install greentic-pack --version 0.4.16
           cargo install greentic-provision --version 0.4.16
       - name: Build provider packs
+        env:
+          PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
