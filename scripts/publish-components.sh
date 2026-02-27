@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIGESTS="${ROOT_DIR}/target/components/digests.json"
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 export COMPONENTS_REGISTRY="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 
@@ -42,3 +42,4 @@ jq -c '.[]' "${DIGESTS}" | while read -r entry; do
     --annotation "greentic.component.digest=${digest}"
   echo "::notice::pushed ${ref}"
 done
+

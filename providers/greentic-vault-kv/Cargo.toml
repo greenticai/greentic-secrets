@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "HashiCorp Vault KV backend for the Greentic secrets core."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 readme = "README.md"
 documentation = "https://docs.rs/greentic-secrets-provider-vault-kv"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
@@ -32,3 +32,4 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 secrets-provider-tests = { workspace = true }
 async-trait = { workspace = true }
 anyhow = { workspace = true }
+

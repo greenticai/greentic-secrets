@@ -8,7 +8,7 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 
@@ -76,7 +76,7 @@ for slug in "${providers[@]}"; do
   done
 
   # Rewrite default component namespace so forks/orgs resolve correctly.
-  sed -i.bak "s|ghcr.io/greentic-ai/components|${components_registry}|g" "${staging}/gtpack.yaml"
+  sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/gtpack.yaml"
   rm -f "${staging}/gtpack.yaml.bak"
 
   # If digests are available, rewrite component URIs to pin them.
@@ -165,3 +165,4 @@ greentic-pack doctor \
   --allow-oci-tags
 
 echo "::notice::built bundle pack secrets-providers.gtpack"
+

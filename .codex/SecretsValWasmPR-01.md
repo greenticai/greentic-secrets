@@ -1,6 +1,6 @@
 # SecretsValWasmPR-01 — Build and publish secrets pack validator as WASM + declare it in secrets extensions
 
-**Repo:** `greentic-ai/greentic-secrets`
+**Repo:** `greenticai/greentic-secrets`
 
 ## Goal
 Create a **secrets domain validator** as a WASM component implementing `greentic:pack-validate@0.1.0`, publish to OCI, and define how secrets packs/extensions reference it.
@@ -11,7 +11,7 @@ No secret requirement can ever be non-sensitive.
 ## Deliverables
 - `crates/greentic-secrets-pack-validator` (WASM component)
 - `validators/secrets/` pack producing `dist/validators-secrets.gtpack`
-- CI publish to `ghcr.io/greentic-ai/validators/secrets:<ver>`
+- CI publish to `ghcr.io/greenticai/validators/secrets:<ver>`
 - Docs: `docs/pack-validation.md`
 
 ## Validator rules (minimal)
@@ -25,3 +25,4 @@ Use only manifest_cbor + sbom_json + file_index. If requirements asset bytes are
 
 ## Acceptance criteria
 - Builds, packages, and can be executed by greentic-pack doctor once validator support is merged.
+

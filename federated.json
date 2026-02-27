@@ -1,6 +1,7 @@
 {
   "name": "github-main",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:greentic-ai/greentic-secrets:ref:refs/heads/main",
+  "subject": "repo:greenticai/greentic-secrets:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"]
 }
+

@@ -3,7 +3,7 @@
 This repo ships a secrets-domain pack validator as a WASM component implementing
 `greentic:pack-validate@0.1.0`. The validator is distributed in two forms:
 
-- OCI component: `ghcr.io/greentic-ai/validators/secrets:<version>`
+- OCI component: `ghcr.io/greenticai/validators/secrets:<version>`
 - Pack bundle: `dist/validators-secrets.gtpack`
 
 ## Validator extension declaration
@@ -19,7 +19,7 @@ extensions:
       validators:
         - id: greentic.validators.secrets
           world: "greentic:pack-validate/pack-validator@0.1.0"
-          component_ref: ghcr.io/greentic-ai/validators/secrets:__PACK_VERSION__
+          component_ref: ghcr.io/greenticai/validators/secrets:__PACK_VERSION__
 ```
 
 ## Diagnostic codes
@@ -37,3 +37,4 @@ extensions:
 ./scripts/build-validator-component.sh
 ./scripts/build-validator-pack.sh
 ```
+

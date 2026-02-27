@@ -17,7 +17,7 @@ Trust policy must allow GitHub OIDC with repo scoping, e.g.:
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:greentic-ai/greentic-secrets:*"
+          "token.actions.githubusercontent.com:sub": "repo:greenticai/greentic-secrets:*"
         }
       }
     }
@@ -41,4 +41,5 @@ Scope permissions to a prefix (e.g. `ci/aws/*`) or by tag on created secrets/key
 - `AWS_OIDC_ROLE_ARN`: role to assume
 - `AWS_REGION`: region to run tests in
 - `GREENTIC_AWS_KMS_KEY_ID`: (optional) pre-provisioned KMS key for real runs; otherwise provide permissions to create one.
+
 
