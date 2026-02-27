@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "HTTP and NATS broker exposing Greentic secrets to applications."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 readme = "README.md"
 documentation = "https://docs.rs/greentic-secrets-broker"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
@@ -67,3 +67,4 @@ gcp-sm = ["secrets-provider-gcp-sm"]
 azure-kv = ["secrets-provider-azure-kv"]
 k8s = ["secrets-provider-k8s"]
 vault-kv = ["secrets-provider-vault-kv"]
+

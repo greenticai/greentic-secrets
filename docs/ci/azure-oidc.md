@@ -13,7 +13,7 @@ This repository runs Azure Key Vault integration tests using GitHub federated id
 Configure the app registration with a federated credential:
 
 - Issuer: `https://token.actions.githubusercontent.com`
-- Subject: `repo:greentic-ai/greentic-secrets:*`
+- Subject: `repo:greenticai/greentic-secrets:*`
 - Audience: `api://AzureADTokenExchange`
 
 ## Workflow variables
@@ -28,4 +28,5 @@ Configure the app registration with a federated credential:
 - Workflow uses `azure/login@v2` (OIDC) then obtains a Vault access token via `az account get-access-token --resource https://vault.azure.net`.
 - Key `greentic-conformance` is created if missing; name exported as `GREENTIC_AZURE_KEY_NAME`.
 - Conformance tests use `GREENTIC_TEST_PREFIX` for unique secret names; names are sanitized (lowercase, `/` -> `-`) to meet Key Vault constraints.
+
 

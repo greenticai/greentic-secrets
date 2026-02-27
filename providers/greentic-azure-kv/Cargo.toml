@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "Azure Key Vault backend for the Greentic secrets core."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 readme = "README.md"
 documentation = "https://docs.rs/greentic-secrets-provider-azure-kv"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
@@ -40,3 +40,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 azure_identity = "0.21"
 azure_core = "0.21"
 async-trait = { workspace = true }
+

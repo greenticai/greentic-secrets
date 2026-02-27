@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Conformance runner for Greentic secrets packs."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 
 [[bin]]
 name = "greentic-secrets-test"
@@ -27,3 +27,4 @@ assert_cmd = { workspace = true }
 predicates = { workspace = true }
 indexmap = { workspace = true }
 semver = { workspace = true }
+

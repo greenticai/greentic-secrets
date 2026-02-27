@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "Core runtime and backend orchestration for Greentic secrets."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 readme = "README.md"
 documentation = "https://docs.rs/greentic-secrets-core"
 keywords = ["secrets", "greentic", "kubernetes", "cloud", "envelope"]
@@ -65,3 +65,4 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 [lib]
 name = "secrets_core"
 crate-type = ["rlib"]
+

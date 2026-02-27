@@ -1,6 +1,7 @@
 {
   "name": "github-pr",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:greentic-ai/greentic-secrets:pull_request",
+  "subject": "repo:greenticai/greentic-secrets:pull_request",
   "audiences": ["api://AzureADTokenExchange"]
 }
+

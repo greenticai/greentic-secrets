@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "Host bridge for environment-backed secrets with tenant policy enforcement."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
@@ -20,3 +20,4 @@ greentic-interfaces = { workspace = true, default-features = false, features = [
 serde_json = { workspace = true }
 base64 = { workspace = true }
 once_cell = { workspace = true }
+
