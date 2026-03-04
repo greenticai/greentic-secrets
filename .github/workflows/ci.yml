@@ -63,7 +63,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.91.1
       - name: Install greentic-pack + greentic-provision
         run: |
-          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa --package greentic-pack --bin greentic-pack
+          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
           cargo install greentic-provision --version 0.4.16
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
