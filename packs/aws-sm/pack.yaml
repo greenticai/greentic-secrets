@@ -88,3 +88,17 @@ extensions:
       - id: greentic.validators.secrets
         world: greentic:pack-validate/pack-validator@0.1.0
         component_ref: ghcr.io/greentic-ai/validators/secrets:__PACK_VERSION__
+  greentic.ext.capabilities.v1:
+    kind: greentic.ext.capabilities.v1
+    version: 1.0.0
+    inline:
+      schema_version: 1
+      offers:
+      - offer_id: secrets.aws_sm.store.read.v1
+        cap_id: greentic.cap.secrets.store.v1
+        version: v1
+        provider:
+          component_ref: greentic.secrets.provider.aws_sm
+          op: get_secret_value
+        priority: 100
+        requires_setup: false

@@ -38,6 +38,7 @@ pub fn router(state: AppState) -> Router {
 
 fn api_routes() -> Router<AppState> {
     Router::new()
+        // Canonical API surface
         .route(
             "/v1/{env}/{tenant}/{category}/{name}",
             axum::routing::put(put_secret_no_team)
@@ -69,6 +70,40 @@ fn api_routes() -> Router<AppState> {
         )
         .route(
             "/v1/{env}/{tenant}/{team}/_rotate/{category}",
+            post(rotate_with_team),
+        )
+        // Admin API aliases (backward-compatible; same handlers/auth/payloads).
+        .route(
+            "/admin/v1/{env}/{tenant}/{category}/{name}",
+            axum::routing::put(put_secret_no_team)
+                .delete(delete_secret_no_team)
+                .get(get_secret_no_team),
+        )
+        .route(
+            "/admin/v1/{env}/{tenant}/{category}/{name}/_versions",
+            get(list_versions_no_team),
+        )
+        .route("/admin/v1/{env}/{tenant}/_list", get(list_secrets_no_team))
+        .route(
+            "/admin/v1/{env}/{tenant}/{team}/{category}/{name}",
+            axum::routing::put(put_secret_with_team)
+                .delete(delete_secret_with_team)
+                .get(get_secret_with_team),
+        )
+        .route(
+            "/admin/v1/{env}/{tenant}/{team}/{category}/{name}/_versions",
+            get(list_versions_with_team),
+        )
+        .route(
+            "/admin/v1/{env}/{tenant}/{team}/_list",
+            get(list_secrets_with_team),
+        )
+        .route(
+            "/admin/v1/{env}/{tenant}/_rotate/{category}",
+            post(rotate_no_team),
+        )
+        .route(
+            "/admin/v1/{env}/{tenant}/{team}/_rotate/{category}",
             post(rotate_with_team),
         )
 }
