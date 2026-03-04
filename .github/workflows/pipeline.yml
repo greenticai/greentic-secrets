@@ -31,7 +31,7 @@ jobs:
       - name: Install greentic-pack and greentic-provision
         run: |
           if ! command -v greentic-pack >/dev/null 2>&1; then
-            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" --bin greentic-pack
+            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" --package greentic-pack --bin greentic-pack
           fi
           if ! command -v greentic-provision >/dev/null 2>&1; then
             cargo binstall -y greentic-provision
