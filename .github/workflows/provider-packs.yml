@@ -68,7 +68,7 @@ jobs:
 
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
