@@ -11,7 +11,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     env:
-      GREENTIC_PACK_VERSION: 0.4.17
+      GREENTIC_PACK_REV: c3fe8aa
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_VERSION }}
+          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_REV }}
 
       - name: Install cargo-binstall
         run: |
@@ -37,7 +37,7 @@ jobs:
       - name: Install greentic-pack
         run: |
           if ! command -v greentic-pack >/dev/null 2>&1; then
-            cargo binstall -y greentic-pack --version "${GREENTIC_PACK_VERSION}"
+            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" --bin greentic-pack
           fi
 
       - name: Pack unit validation (provider-core extension + schemas + pack.lock)

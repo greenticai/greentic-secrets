@@ -10,6 +10,7 @@ permissions:
 
 env:
   RUST_VERSION: "1.91.1"
+  GREENTIC_PACK_REV: c3fe8aa
 
 jobs:
   tools:
@@ -20,7 +21,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_VERSION }}
+          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_REV }}
       - name: Install cargo-binstall
         run: |
           if ! command -v cargo-binstall >/dev/null 2>&1; then
@@ -30,7 +31,7 @@ jobs:
       - name: Install greentic-pack and greentic-provision
         run: |
           if ! command -v greentic-pack >/dev/null 2>&1; then
-            cargo binstall -y greentic-pack
+            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" --bin greentic-pack
           fi
           if ! command -v greentic-provision >/dev/null 2>&1; then
             cargo binstall -y greentic-provision
