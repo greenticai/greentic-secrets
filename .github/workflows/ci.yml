@@ -82,6 +82,10 @@ jobs:
         env:
           COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
           PACK_OFFLINE: "0"
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
