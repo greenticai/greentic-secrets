@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - run: cargo build --workspace --all-features
       - run: RUST_BACKTRACE=1 cargo test --workspace --all-features -- --nocapture
       - name: Deny reqwest::blocking in Vault provider
@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
 
       - if: matrix.provider == 'k8s'
         name: Start KinD
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install greentic-pack --version 0.4.16
@@ -77,7 +77,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
+          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures

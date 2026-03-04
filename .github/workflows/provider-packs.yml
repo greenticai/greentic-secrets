@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust 1.90
-        uses: dtolnay/rust-toolchain@1.90
+        uses: dtolnay/rust-toolchain@1.91.1
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y zip yq
@@ -60,7 +60,7 @@ jobs:
 
       - name: Build provider packs
         env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
+          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
 

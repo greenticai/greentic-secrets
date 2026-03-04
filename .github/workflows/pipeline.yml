@@ -9,13 +9,13 @@ permissions:
   contents: read
 
 env:
-  RUST_VERSION: "1.90"
+  RUST_VERSION: "1.91.1"
 
 jobs:
   tools:
     runs-on: ubuntu-latest
     steps:
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - name: Cache Cargo binaries
         uses: actions/cache@v4
         with:
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - uses: Swatinem/rust-cache@v2
       - name: fmt + clippy
         run: |
@@ -66,7 +66,7 @@ jobs:
       CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - uses: Swatinem/rust-cache@v2
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
@@ -96,7 +96,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - if: matrix.provider == 'k8s'
         name: Start KinD
         uses: helm/kind-action@v1
@@ -129,7 +129,7 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
         with:
@@ -154,7 +154,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
+          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
@@ -171,7 +171,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - uses: Swatinem/rust-cache@v2
       - name: Publish changed crates
         uses: katyo/publish-crates@v2
@@ -192,7 +192,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust 1.90 with wasm target
-        uses: dtolnay/rust-toolchain@1.90
+        uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: wasm32-wasip2
       - name: Install dependencies
@@ -228,7 +228,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.91.1
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
         with:
@@ -257,7 +257,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
+          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Write bundle descriptor for store compatibility
@@ -299,7 +299,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust 1.90 with wasm target
-        uses: dtolnay/rust-toolchain@1.90
+        uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: wasm32-wasip2
       - name: Restore cargo bin
