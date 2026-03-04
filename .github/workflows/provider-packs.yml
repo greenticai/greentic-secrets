@@ -58,9 +58,14 @@ jobs:
           token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
 
+      - name: Publish components to GHCR
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+        run: ./scripts/publish-components.sh
+
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
 

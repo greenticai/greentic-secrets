@@ -154,7 +154,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
@@ -220,7 +220,7 @@ jobs:
           path: target/components/digests.json
 
   build-and-push-packs:
-    needs: [lint, test]
+    needs: [lint, test, publish-components]
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
@@ -257,7 +257,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/greentic-ai/components
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
         run: ./scripts/build-provider-packs.sh
       - name: Write bundle descriptor for store compatibility
