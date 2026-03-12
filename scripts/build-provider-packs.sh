@@ -338,11 +338,23 @@ version = sys.argv[2]
 lock_path = Path(sys.argv[3]).resolve()
 base_dir = lock_path.parent
 
+pack_ids = {
+    "secrets-aws-sm": "greentic.secrets.aws-sm",
+    "secrets-azure-kv": "greentic.secrets.azure-kv",
+    "secrets-gcp-sm": "greentic.secrets.gcp-sm",
+    "secrets-k8s": "greentic.secrets.k8s",
+    "secrets-providers": "greentic.secrets.providers",
+    "secrets-vault-kv": "greentic.secrets.vault-kv",
+}
+
 packs = []
 for pack_path in sorted(out_dir.glob("*.gtpack")):
+    name = pack_path.stem
+    pack_id = pack_ids.get(name)
     packs.append(
         {
-            "name": pack_path.stem,
+            "name": name,
+            **({"pack_id": pack_id, "published_name": f"{pack_id}.gtpack"} if pack_id else {}),
             "version": version,
             "artifact": os.path.relpath(pack_path, base_dir),
         }

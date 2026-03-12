@@ -57,9 +57,25 @@ def oras_artifact_arg(pack_path: Path) -> str:
         artifact_path = pack_path
     return f"{artifact_path.as_posix()}:{media_type}"
 
+def published_name(name: str) -> str:
+    entry = packs_by_name.get(name, {})
+    canonical = entry.get("published_name")
+    if canonical:
+        return canonical
+
+    pack_id = entry.get("pack_id")
+    if pack_id:
+        return f"{pack_id}.gtpack"
+
+    if name.startswith("secrets-"):
+        suffix = name[len("secrets-"):]
+        return f"greentic.secrets.{suffix}.gtpack"
+
+    return f"{name}.gtpack"
+
 for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
     name = pack_path.stem
-    repo_path = f"{registry}/{namespace}/{repo}/{name}"
+    repo_path = f"{registry}/{namespace}/{repo}/{published_name(name)}"
     version_ref = f"{repo_path}:{pack_version}"
     subprocess.run(
         [
@@ -84,6 +100,7 @@ for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
 
     entry = packs_by_name.setdefault(name, {"name": name})
     entry["version"] = pack_version
+    entry["published_name"] = published_name(name)
     entry["reference"] = f"oci://{version_ref}"
     if publish_latest.lower() in {"1", "true", "yes"}:
         entry["latest_reference"] = f"oci://{repo_path}:latest"
