@@ -48,6 +48,23 @@ jobs:
     needs: sync-packs
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo bin tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-tools-${{ runner.os }}-v1
+      - name: Install cargo-binstall
+        run: |
+          if ! command -v cargo-binstall >/dev/null 2>&1; then
+            cargo install cargo-binstall --locked
+          fi
+      - name: Install greentic-provision
+        run: |
+          cargo binstall greentic-provision --force --no-confirm --locked || cargo install greentic-provision --force --locked
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          greentic-provision --version
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
 
@@ -155,7 +172,7 @@ jobs:
           dry-run: false
 
   publish-packs:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     needs: build-packs
     runs-on: ubuntu-latest
     permissions:
