@@ -16,6 +16,11 @@ PACK_OFFLINE="${PACK_OFFLINE:-0}"
 PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-1}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
+packs_registry="${PACKS_REGISTRY:-ghcr.io}"
+packs_namespace="${PACKS_NAMESPACE:-greenticai}"
+packs_repo="${PACKS_REPO:-packs/secrets}"
+packs_namespace="$(printf '%s' "${packs_namespace}" | tr '[:upper:]' '[:lower:]')"
+packs_repo="$(printf '%s' "${packs_repo}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 oci_registry_host="${components_registry%%/*}"
 ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greentic-ai}}}"
@@ -327,7 +332,7 @@ run_pack greentic-pack doctor \
 
 echo "::notice::built bundle pack secrets-providers.gtpack"
 
-python3 - "${OUT_DIR}" "${VERSION}" "${PACKS_LOCKFILE}" <<'PY'
+python3 - "${OUT_DIR}" "${VERSION}" "${PACKS_LOCKFILE}" "${packs_registry}" "${packs_namespace}" "${packs_repo}" <<'PY'
 from pathlib import Path
 import json
 import os
@@ -336,6 +341,9 @@ import sys
 out_dir = Path(sys.argv[1]).resolve()
 version = sys.argv[2]
 lock_path = Path(sys.argv[3]).resolve()
+registry = sys.argv[4]
+namespace = sys.argv[5]
+repo = sys.argv[6]
 base_dir = lock_path.parent
 
 pack_ids = {
@@ -351,12 +359,17 @@ packs = []
 for pack_path in sorted(out_dir.glob("*.gtpack")):
     name = pack_path.stem
     pack_id = pack_ids.get(name)
+    published_name = f"{pack_id}.gtpack" if pack_id else f"{name}.gtpack"
+    version_ref = f"oci://{registry}/{namespace}/{repo}/{published_name}:{version}"
+    latest_ref = f"oci://{registry}/{namespace}/{repo}/{published_name}:latest"
     packs.append(
         {
             "name": name,
-            **({"pack_id": pack_id, "published_name": f"{pack_id}.gtpack"} if pack_id else {}),
+            **({"pack_id": pack_id, "published_name": published_name} if pack_id else {}),
             "version": version,
             "artifact": os.path.relpath(pack_path, base_dir),
+            "reference": version_ref,
+            "latest_reference": latest_ref,
         }
     )
 

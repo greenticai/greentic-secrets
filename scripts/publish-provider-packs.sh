@@ -8,7 +8,7 @@ command -v oras >/dev/null 2>&1 || { echo "oras is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
 OCI_REGISTRY="${OCI_REGISTRY:-ghcr.io}"
-OCI_NAMESPACE="${OCI_NAMESPACE:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+OCI_NAMESPACE="${OCI_NAMESPACE:-greenticai}"
 OCI_REPO="${OCI_REPO:-packs/secrets}"
 OCI_NAMESPACE="$(printf '%s' "${OCI_NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
 OCI_REPO="$(printf '%s' "${OCI_REPO}" | tr '[:upper:]' '[:lower:]')"

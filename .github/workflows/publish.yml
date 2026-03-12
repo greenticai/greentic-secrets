@@ -13,6 +13,7 @@ permissions:
 
 env:
   OCI_REGISTRY: ghcr.io
+  OCI_NAMESPACE: greenticai
   OCI_REPO: packs/secrets
 
 jobs:
@@ -200,7 +201,7 @@ jobs:
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Publish packs
         env:
-          OCI_NAMESPACE: ${{ github.repository_owner }}
+          OCI_NAMESPACE: ${{ env.OCI_NAMESPACE }}
           OCI_REPO: ${{ env.OCI_REPO }}
           PACK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           PUBLISH_LATEST: "1"
