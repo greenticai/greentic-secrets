@@ -2,6 +2,7 @@
 import json
 import sys
 import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -35,6 +36,10 @@ def normalize_sha256_digest(raw: str):
 
 
 def digest_for(component_id: str, uri: str, digests):
+    if uri and uri.startswith("file://"):
+        path = Path(uri[len("file://") :])
+        if path.exists():
+            return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(), True
     if uri and "@sha256:" in uri:
         normalized = normalize_sha256_digest(uri.split("@sha256:", 1)[1])
         if normalized:
@@ -50,9 +55,21 @@ def digest_for(component_id: str, uri: str, digests):
     return synthetic, False
 
 
-def source_ref_for(uri: str, digest: str, pin_digest: bool):
+def source_ref_for(uri: str, digest: str, pin_digest: bool, flow_path: Path):
     if not uri:
         return None
+    if uri.startswith("file://"):
+        raw_path = Path(uri[len("file://") :])
+        if raw_path.is_absolute():
+            try:
+                rel_path = raw_path.relative_to(flow_path.parent)
+            except ValueError:
+                rel_path = Path(
+                    os.path.relpath(raw_path, start=flow_path.parent)
+                )
+        else:
+            rel_path = raw_path
+        return {"kind": "local", "path": rel_path.as_posix()}
     if uri.startswith("oci://"):
         uri = uri[len("oci://") :]
     if pin_digest and digest and "@sha256:" not in uri:
@@ -106,7 +123,7 @@ def main():
             digest, pin_digest = digest_for(component_id, uri, digests)
             summary_node = {
                 "component_id": component_id,
-                "source": source_ref_for(uri, digest, pin_digest),
+                "source": source_ref_for(uri, digest, pin_digest, flow_path),
                 "digest": digest,
             }
             summary_nodes[node_id] = summary_node

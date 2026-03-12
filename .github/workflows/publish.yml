@@ -13,7 +13,7 @@ permissions:
 
 env:
   OCI_REGISTRY: ghcr.io
-  OCI_REPO: greentic-packs
+  OCI_REPO: packs/secrets
 
 jobs:
   build-test:
@@ -127,6 +127,7 @@ jobs:
         env:
           REGISTRY_OWNER: ${{ github.repository_owner }}
           PACK_OFFLINE: "0"
+          PACK_USE_LOCAL_COMPONENTS: "1"
         run: ./scripts/build-provider-packs.sh
       - name: Upload packs + fixtures report on failure
         if: failure()

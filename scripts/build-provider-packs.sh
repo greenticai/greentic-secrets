@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Build enterprise provider .gtpack bundles from ./packs/<provider> using packc.
 #
-# Unlike the OAuth repo's descriptor packs, these provider packs resolve OCI
-# component references during `greentic-pack resolve/build`, so the safe default
-# is online mode. Callers can still force offline mode with `PACK_OFFLINE=1`.
+# Provider packs can resolve provider components from locally built artifacts.
+# Use that path by default so pack builds do not depend on GHCR state.
+# Callers can disable it with PACK_USE_LOCAL_COMPONENTS=0.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
@@ -13,12 +13,13 @@ DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACKS_LOCKFILE="${PACKS_LOCKFILE:-$ROOT_DIR/packs.lock.json}"
 PACK_OFFLINE="${PACK_OFFLINE:-0}"
+PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-1}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 oci_registry_host="${components_registry%%/*}"
 ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greentic-ai}}}"
-ghcr_token="${gh_pat:-${GH_PAT:-${GHCR_TOKEN:-}}}"
+ghcr_token="${GHCR_TOKEN:-${GITHUB_TOKEN:-${gh_pat:-${GH_PAT:-}}}}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -39,19 +40,29 @@ providers=(
   vault-kv
 )
 built_gtpacks=()
+built_components_ready=0
 
 echo "Building provider packs for version ${VERSION}"
 echo "Components registry namespace: ${components_registry}"
 
 pack_mode_args=()
+build_extra_args=()
+provider_bundle_mode="none"
 pack_mode_label="online"
 if [[ "${PACK_OFFLINE}" == "1" ]]; then
   pack_mode_args=(--offline)
   pack_mode_label="offline"
 fi
+if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" ]]; then
+  build_extra_args+=(--allow-pack-schema)
+  provider_bundle_mode="cache"
+fi
 echo "Pack mode: ${pack_mode_label}"
+echo "Local provider components: ${PACK_USE_LOCAL_COMPONENTS}"
 
-if [[ -n "${ghcr_token}" ]]; then
+if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" ]]; then
+  echo "Using locally staged provider components; skipping GHCR auth for provider resolution"
+elif [[ -n "${ghcr_token}" ]]; then
   export GREENTIC_OCI_USERNAME="${GREENTIC_OCI_USERNAME:-${ghcr_user}}"
   export GREENTIC_OCI_PASSWORD="${GREENTIC_OCI_PASSWORD:-${ghcr_token}}"
   if command -v oras >/dev/null 2>&1; then
@@ -61,8 +72,36 @@ if [[ -n "${ghcr_token}" ]]; then
     echo "oras not found; relying on GREENTIC_OCI_USERNAME/GREENTIC_OCI_PASSWORD for OCI auth"
   fi
 else
-  echo "No GHCR token found in gh_pat/GH_PAT/GHCR_TOKEN; relying on existing OCI auth state"
+  echo "No GHCR token found in GHCR_TOKEN/GITHUB_TOKEN/GH_PAT; relying on existing OCI auth state"
 fi
+
+ensure_local_components() {
+  if [[ "${PACK_USE_LOCAL_COMPONENTS}" != "1" ]]; then
+    return 0
+  fi
+  if [[ "${built_components_ready}" == "1" ]]; then
+    return 0
+  fi
+  local required=(
+    "${ROOT_DIR}/target/components/secrets-provider-aws-sm.wasm"
+    "${ROOT_DIR}/target/components/secrets-provider-azure-kv.wasm"
+    "${ROOT_DIR}/target/components/secrets-provider-gcp-sm.wasm"
+    "${ROOT_DIR}/target/components/secrets-provider-k8s.wasm"
+    "${ROOT_DIR}/target/components/secrets-provider-vault-kv.wasm"
+  )
+  local missing=0
+  local artifact
+  for artifact in "${required[@]}"; do
+    if [[ ! -f "${artifact}" ]]; then
+      missing=1
+      break
+    fi
+  done
+  if [[ "${missing}" == "1" ]]; then
+    "${ROOT_DIR}/scripts/build-components.sh"
+  fi
+  built_components_ready=1
+}
 
 run_pack() {
   if [[ "${#pack_mode_args[@]}" -gt 0 ]]; then
@@ -109,8 +148,101 @@ for slug in "${providers[@]}"; do
   sed -i.bak "s|ghcr.io/greentic-ai/components|${components_registry}|g" "${staging}/gtpack.yaml"
   rm -f "${staging}/gtpack.yaml.bak"
 
+  if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" ]]; then
+    ensure_local_components
+    case "${slug}" in
+      aws-sm) provider_artifact="secrets-provider-aws-sm.wasm" ;;
+      azure-kv) provider_artifact="secrets-provider-azure-kv.wasm" ;;
+      gcp-sm) provider_artifact="secrets-provider-gcp-sm.wasm" ;;
+      k8s) provider_artifact="secrets-provider-k8s.wasm" ;;
+      vault-kv) provider_artifact="secrets-provider-vault-kv.wasm" ;;
+      *)
+        echo "unknown provider slug for local component mapping: ${slug}" >&2
+        exit 1
+        ;;
+    esac
+    provider_component_path="${ROOT_DIR}/target/components/${provider_artifact}"
+    if [[ ! -f "${provider_component_path}" ]]; then
+      echo "missing local provider component: ${provider_component_path}" >&2
+      exit 1
+    fi
+    mkdir -p "${staging}/components"
+    cp "${provider_component_path}" "${staging}/components/${provider_artifact}"
+    staged_provider_component_path="${staging}/components/${provider_artifact}"
+    provider_component_uri="file://${staged_provider_component_path}"
+    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" "${provider_component_uri}" "${slug}" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+gtpack_path = Path(sys.argv[1])
+pack_path = Path(sys.argv[2])
+component_uri = sys.argv[3]
+slug = sys.argv[4]
+
+provider_ids = {
+    "aws-sm": "greentic.secrets.provider.aws_sm",
+    "azure-kv": "greentic.secrets.provider.azure_kv",
+    "gcp-sm": "greentic.secrets.provider.gcp_sm",
+    "k8s": "greentic.secrets.provider.k8s",
+    "vault-kv": "greentic.secrets.provider.vault_kv",
+}
+provider_id = provider_ids[slug]
+
+gtpack = yaml.safe_load(gtpack_path.read_text()) or {}
+for comp in gtpack.get("components") or []:
+    if comp.get("id") == provider_id:
+        comp["uri"] = component_uri
+extensions = (gtpack.get("extensions") or {}).get("greentic.provider-extension.v1") or {}
+provider = extensions.get("provider") or {}
+runtime = provider.get("runtime") or {}
+if runtime.get("component_ref"):
+    runtime["component_ref"] = component_uri
+yaml.safe_dump(gtpack, gtpack_path.open("w"), sort_keys=False)
+
+pack = yaml.safe_load(pack_path.read_text()) or {}
+extensions = (pack.get("extensions") or {}).get("greentic.provider-extension.v1") or {}
+inline = extensions.get("inline") or {}
+providers = inline.get("providers") or []
+provider_runtime = {}
+provider_ops = []
+for provider in providers:
+    runtime = (provider.get("runtime") or {})
+    if runtime.get("component_ref"):
+        runtime["component_ref"] = component_uri
+    provider_runtime = runtime or provider_runtime
+    provider_ops = list(provider.get("ops") or provider_ops)
+pack["components"] = [
+    {
+        "id": provider_id,
+        "version": str(pack.get("version") or "0.0.0"),
+        "world": provider_runtime.get("world", "greentic:provider/schema-core@1.0.0"),
+        "supports": [],
+        "profiles": {
+            "default": "stateless",
+            "supported": ["stateless"],
+        },
+        "capabilities": {
+            "wasi": {},
+            "host": {},
+        },
+        "operations": [
+            {
+                "name": op,
+                "input_schema": {},
+                "output_schema": {},
+            }
+            for op in provider_ops
+        ],
+        "wasm": f"components/{Path(component_uri[len('file://'):]).name}",
+    }
+]
+yaml.safe_dump(pack, pack_path.open("w"), sort_keys=False)
+PY
+  fi
+
   # If digests are available, rewrite component URIs to pin them.
-  if [[ -f "${DIGESTS_JSON}" ]]; then
+  if [[ -f "${DIGESTS_JSON}" && "${PACK_USE_LOCAL_COMPONENTS}" != "1" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
     python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" > "${tmp}" <<'PY'
 import json, sys, yaml
@@ -139,7 +271,8 @@ PY
     --in "${staging}" \
     --lock "${LOCK_FILE}" \
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --bundle none \
+    --bundle "${provider_bundle_mode}" \
+    "${build_extra_args[@]}" \
     --allow-oci-tags
   run_pack greentic-pack doctor \
     --validate \

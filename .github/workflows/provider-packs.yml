@@ -70,6 +70,7 @@ jobs:
         env:
           COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
+          PACK_USE_LOCAL_COMPONENTS: "1"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
@@ -96,13 +97,13 @@ jobs:
           REGISTRY_OWNER=${{ github.repository_owner }}
           for pack in dist/packs/secrets-*.gtpack; do
             name=$(basename "${pack}" .gtpack)
-            ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/${name}:${VERSION}"
+            ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/${name}:${VERSION}"
             oras push "${ref}" \
               "${pack}:application/vnd.greentic.pack+zip"
             echo "::notice::Pushed ${ref}"
           done
           # Push bundle
-          bundle_ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/secrets-providers:${VERSION}"
+          bundle_ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/secrets-providers:${VERSION}"
           oras push "${bundle_ref}" \
             "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
           echo "::notice::Pushed ${bundle_ref}"
