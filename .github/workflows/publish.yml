@@ -64,7 +64,7 @@ jobs:
         run: |
           cargo binstall greentic-provision --force --no-confirm --locked || cargo install greentic-provision --force --locked
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
-          greentic-provision --version
+          command -v greentic-provision
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
 
