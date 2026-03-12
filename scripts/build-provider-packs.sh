@@ -360,16 +360,12 @@ for pack_path in sorted(out_dir.glob("*.gtpack")):
     name = pack_path.stem
     pack_id = pack_ids.get(name)
     published_name = f"{pack_id}.gtpack" if pack_id else f"{name}.gtpack"
-    version_ref = f"oci://{registry}/{namespace}/{repo}/{published_name}:{version}"
-    latest_ref = f"oci://{registry}/{namespace}/{repo}/{published_name}:latest"
     packs.append(
         {
             "name": name,
             **({"pack_id": pack_id, "published_name": published_name} if pack_id else {}),
             "version": version,
             "artifact": os.path.relpath(pack_path, base_dir),
-            "reference": version_ref,
-            "latest_reference": latest_ref,
         }
     )
 

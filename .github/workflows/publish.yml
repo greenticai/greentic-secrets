@@ -195,13 +195,15 @@ jobs:
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GH_FALLBACK_TOKEN: ${{ github.token }}
         run: |
-          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
-          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for publishing packs. github.token fallback is disabled because it can lack GHCR publish permissions." >&2
+            exit 1
+          fi
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Publish packs
         env:
-          OCI_NAMESPACE: ${{ env.OCI_NAMESPACE }}
+          OCI_NAMESPACE: ${{ github.repository_owner }}
           OCI_REPO: ${{ env.OCI_REPO }}
           PACK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           PUBLISH_LATEST: "1"
