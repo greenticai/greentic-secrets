@@ -16,9 +16,7 @@ components:
   - id: greentic.secrets.provider.k8s
     version: "__PACK_VERSION__"
     source: oci
-    # FIXME(provider-version): Temporary fallback to the last known published tag.
-    # Switch this back to the latest workspace version once component publishing is fixed.
-    uri: ghcr.io/greentic-ai/components/secrets-provider-k8s:0.4.23
+    uri: ghcr.io/greentic-ai/components/secrets-provider-k8s:__PACK_VERSION__
   # FIXME(generators): Removed unresolved component reference.
   # Restore after publishing ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__.
   # FIXME(audit-exporter): Removed unresolved component reference.
@@ -37,9 +35,7 @@ extensions:
       id: greentic.secrets.k8s
       runtime:
         world: "greentic:provider-schema-core/schema-core@1.0.0"
-        # FIXME(provider-version): Temporary fallback to the last known published tag.
-        # Switch this back to the latest workspace version once component publishing is fixed.
-        component_ref: ghcr.io/greentic-ai/components/secrets-provider-k8s:0.4.23
+        component_ref: ghcr.io/greentic-ai/components/secrets-provider-k8s:__PACK_VERSION__
         export: "invoke"
   greentic.secrets.validators.v1:
     kind: greentic.secrets.validators.v1

@@ -16,6 +16,9 @@ PACK_OFFLINE="${PACK_OFFLINE:-0}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
+oci_registry_host="${components_registry%%/*}"
+ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greentic-ai}}}"
+ghcr_token="${gh_pat:-${GH_PAT:-${GHCR_TOKEN:-}}}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -47,6 +50,19 @@ if [[ "${PACK_OFFLINE}" == "1" ]]; then
   pack_mode_label="offline"
 fi
 echo "Pack mode: ${pack_mode_label}"
+
+if [[ -n "${ghcr_token}" ]]; then
+  export GREENTIC_OCI_USERNAME="${GREENTIC_OCI_USERNAME:-${ghcr_user}}"
+  export GREENTIC_OCI_PASSWORD="${GREENTIC_OCI_PASSWORD:-${ghcr_token}}"
+  if command -v oras >/dev/null 2>&1; then
+    printf '%s' "${ghcr_token}" | oras login "${oci_registry_host}" -u "${ghcr_user}" --password-stdin >/dev/null
+    echo "Authenticated to ${oci_registry_host} as ${ghcr_user}"
+  else
+    echo "oras not found; relying on GREENTIC_OCI_USERNAME/GREENTIC_OCI_PASSWORD for OCI auth"
+  fi
+else
+  echo "No GHCR token found in gh_pat/GH_PAT/GHCR_TOKEN; relying on existing OCI auth state"
+fi
 
 run_pack() {
   if [[ "${#pack_mode_args[@]}" -gt 0 ]]; then

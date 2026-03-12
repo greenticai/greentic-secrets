@@ -2,9 +2,7 @@ components:
   - id: greentic.secrets.provider.k8s
     version: "__PACK_VERSION__"
     source: oci
-    # FIXME(provider-version): Temporary fallback to the last known published tag.
-    # Switch this back to the latest workspace version once component publishing is fixed.
-    uri: ghcr.io/greentic-ai/components/secrets-provider-k8s:0.4.23
+    uri: ghcr.io/greentic-ai/components/secrets-provider-k8s:__PACK_VERSION__
   # FIXME(generators): Removed unresolved component reference.
   # Restore after publishing ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__.
   # FIXME(audit-exporter): Removed unresolved component reference.
