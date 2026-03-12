@@ -50,6 +50,13 @@ lock_path = root / "packs.lock.json"
 lock = json.loads(lock_path.read_text(encoding="utf-8")) if lock_path.exists() else {"version": pack_version, "packs": []}
 packs_by_name = {entry["name"]: entry for entry in lock.get("packs", [])}
 
+def oras_artifact_arg(pack_path: Path) -> str:
+    try:
+        artifact_path = pack_path.relative_to(root)
+    except ValueError:
+        artifact_path = pack_path
+    return f"{artifact_path.as_posix()}:{media_type}"
+
 for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
     name = pack_path.stem
     repo_path = f"{registry}/{namespace}/{repo}/{name}"
@@ -59,7 +66,7 @@ for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
             "oras",
             "push",
             version_ref,
-            f"{pack_path}:{media_type}",
+            oras_artifact_arg(pack_path),
         ],
         check=True,
     )
@@ -70,7 +77,7 @@ for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
                 "oras",
                 "push",
                 latest_ref,
-                f"{pack_path}:{media_type}",
+                oras_artifact_arg(pack_path),
             ],
             check=True,
         )
