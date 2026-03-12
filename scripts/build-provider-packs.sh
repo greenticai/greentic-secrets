@@ -2,12 +2,17 @@
 set -euo pipefail
 
 # Build enterprise provider .gtpack bundles from ./packs/<provider> using packc.
+#
+# Unlike the OAuth repo's descriptor packs, these provider packs resolve OCI
+# component references during `greentic-pack resolve/build`, so the safe default
+# is online mode. Callers can still force offline mode with `PACK_OFFLINE=1`.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
-PACK_OFFLINE="${PACK_OFFLINE:-1}"
+PACKS_LOCKFILE="${PACKS_LOCKFILE:-$ROOT_DIR/packs.lock.json}"
+PACK_OFFLINE="${PACK_OFFLINE:-0}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
@@ -34,13 +39,22 @@ built_gtpacks=()
 
 echo "Building provider packs for version ${VERSION}"
 echo "Components registry namespace: ${components_registry}"
+
+pack_mode_args=()
+pack_mode_label="online"
 if [[ "${PACK_OFFLINE}" == "1" ]]; then
-  PACK_MODE_ARGS=(--offline)
-  echo "Pack mode: offline"
-else
-  PACK_MODE_ARGS=()
-  echo "Pack mode: online"
+  pack_mode_args=(--offline)
+  pack_mode_label="offline"
 fi
+echo "Pack mode: ${pack_mode_label}"
+
+run_pack() {
+  if [[ "${#pack_mode_args[@]}" -gt 0 ]]; then
+    "$@" "${pack_mode_args[@]}"
+  else
+    "$@"
+  fi
+}
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
@@ -86,7 +100,8 @@ for slug in "${providers[@]}"; do
 import json, sys, yaml
 digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
 manifest = yaml.safe_load(open(sys.argv[2]))
-for comp in manifest.get("components", []):
+components = manifest.get("components") or []
+for comp in components:
     did = comp.get("id")
     d = digests.get(did)
     if d:
@@ -94,6 +109,7 @@ for comp in manifest.get("components", []):
         if digest.startswith("sha256:"):
             digest = digest[len("sha256:"):]
         comp["uri"] = f"{d['ref']}@sha256:{digest}"
+manifest["components"] = components
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"
@@ -102,19 +118,17 @@ PY
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
   LOCK_FILE="${staging}/pack.lock.json"
-  greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-  greentic-pack build \
+  run_pack greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}"
+  run_pack greentic-pack build \
     --in "${staging}" \
     --lock "${LOCK_FILE}" \
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
     --bundle none \
-    "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
-  greentic-pack doctor \
+  run_pack greentic-pack doctor \
     --validate \
     --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
     --validator-pack "${VALIDATOR_PACK}" \
-    "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
 
   echo "::notice::built pack secrets-${slug}.gtpack"
@@ -149,19 +163,45 @@ EOF
 rm -f "${bundle_staging}/deps.tmp"
 
 LOCK_FILE="${bundle_staging}/pack.lock.json"
-greentic-pack resolve --in "${bundle_staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-greentic-pack build \
+run_pack greentic-pack resolve --in "${bundle_staging}" --lock "${LOCK_FILE}"
+run_pack greentic-pack build \
   --in "${bundle_staging}" \
   --lock "${LOCK_FILE}" \
   --gtpack-out "${OUT_DIR}/secrets-providers.gtpack" \
   --bundle none \
-  "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
-greentic-pack doctor \
+run_pack greentic-pack doctor \
   --validate \
   --pack "${OUT_DIR}/secrets-providers.gtpack" \
   --validator-pack "${VALIDATOR_PACK}" \
-  "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
 
 echo "::notice::built bundle pack secrets-providers.gtpack"
+
+python3 - "${OUT_DIR}" "${VERSION}" "${PACKS_LOCKFILE}" <<'PY'
+from pathlib import Path
+import json
+import os
+import sys
+
+out_dir = Path(sys.argv[1]).resolve()
+version = sys.argv[2]
+lock_path = Path(sys.argv[3]).resolve()
+base_dir = lock_path.parent
+
+packs = []
+for pack_path in sorted(out_dir.glob("*.gtpack")):
+    packs.append(
+        {
+            "name": pack_path.stem,
+            "version": version,
+            "artifact": os.path.relpath(pack_path, base_dir),
+        }
+    )
+
+lock = {
+    "version": version,
+    "packs": packs,
+}
+lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+PY

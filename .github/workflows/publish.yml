@@ -1,48 +1,142 @@
 name: Publish crates (single or workspace)
 
 on:
+  push:
+    branches: [ master ]
+    tags: [ "v*" ]
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
+env:
+  OCI_REGISTRY: ghcr.io
+  OCI_REPO: greentic-packs
+
 jobs:
-  lint:
+  build-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
-      - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: publish
-      - name: fmt + clippy
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint & Test
         run: |
           cargo fmt --all -- --check
           cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo build --workspace --all-features --locked
+          cargo test --workspace --all-features --locked -- --nocapture
 
-  test:
+  sync-packs:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      CARGO_INCREMENTAL: 0
-      CARGO_PROFILE_DEV_DEBUG: 0
-      CARGO_PROFILE_TEST_DEBUG: 0
-      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify provider pack sources exist
+        run: |
+          test -f packs/aws-sm/pack.yaml
+          test -f packs/azure-kv/pack.yaml
+          test -f packs/gcp-sm/pack.yaml
+          test -f packs/k8s/pack.yaml
+          test -f packs/vault-kv/pack.yaml
+
+  flow-doctor:
+    runs-on: ubuntu-latest
+    needs: sync-packs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate provisioning fixtures
+        run: ./scripts/validate-provision-fixtures.sh
+
+  component-doctor:
+    runs-on: ubuntu-latest
+    needs: sync-packs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Component doctor placeholder
+        run: echo "greentic-secrets builds provider packs against OCI-hosted components; no separate component artifact stage here."
+
+  questions-component-test:
+    runs-on: ubuntu-latest
+    needs: sync-packs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Questions component placeholder
+        run: echo "greentic-secrets has no questions component pack tests."
+
+  build-packs:
+    runs-on: ubuntu-latest
+    needs: [sync-packs, flow-doctor, component-doctor, questions-component-test]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
       - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo bin tools
+        uses: actions/cache@v4
         with:
-          shared-key: publish
-      - name: cargo test (all features)
+          path: ~/.cargo/bin
+          key: cargo-bin-tools-${{ runner.os }}-v1
+      - name: Install cargo-binstall
         run: |
-          cargo test --workspace --all-features --locked -- --nocapture
+          if ! command -v cargo-binstall >/dev/null 2>&1; then
+            cargo install cargo-binstall --locked
+          fi
+      - name: Install greentic-pack
+        run: |
+          cargo binstall greentic-pack --force --no-confirm --locked || cargo install greentic-pack --force --locked
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          greentic-pack --version
+      - name: Install greentic-provision
+        run: |
+          cargo binstall greentic-provision --force --no-confirm --locked || cargo install greentic-provision --force --locked
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GH_FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
+          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+      - name: Pack unit validation
+        run: cargo test -p greentic-secrets-runner pack_validation
+      - name: Build packs
+        env:
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+          PACK_OFFLINE: "0"
+        run: ./scripts/build-provider-packs.sh
+      - name: Upload packs + fixtures report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packs-and-fixtures
+          path: |
+            dist/packs/*.gtpack
+            packs.lock.json
+          if-no-files-found: warn
+      - name: Upload built packs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrets-gtpack-artifacts
+          path: dist/packs/*.gtpack
+          if-no-files-found: error
+      - name: Upload packs lockfile (dry-run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: packs-lockfile-dryrun
+          path: packs.lock.json
+          if-no-files-found: error
 
-  publish:
+  publish-crates:
     if: github.event_name == 'push'
-    needs:
-      - lint
-      - test
+    needs: build-test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -59,3 +153,43 @@ jobs:
           ignore-unpublished-changes: true
           check-repo: true
           dry-run: false
+
+  publish-packs:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build-packs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+      - name: Download built packs
+        uses: actions/download-artifact@v4
+        with:
+          name: secrets-gtpack-artifacts
+          path: dist/packs
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GH_FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
+          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+      - name: Publish packs
+        env:
+          OCI_NAMESPACE: ${{ github.repository_owner }}
+          OCI_REPO: ${{ env.OCI_REPO }}
+          PACK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          PUBLISH_LATEST: "1"
+        run: ./scripts/publish-provider-packs.sh
+      - name: Upload published packs lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: packs-lockfile-published
+          path: packs.lock.json
+          if-no-files-found: error

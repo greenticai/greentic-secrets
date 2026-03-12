@@ -4,16 +4,9 @@ type: event
 entrypoints:
   default: {}
 nodes:
-  validate_config:
-    telemetry:
-      span: provider.onboard.validate_config
-    operation: validate_config
-    component.exec:
-      config: ${inputs.config}
-      schema_ref: assets/schemas/secrets/azure-kv/config.schema.json
-      component: greentic.secrets.policy_validator
+  # FIXME(policy-validator): Config validation is disabled because this pack referenced
+  # ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
   auth:
-    after: validate_config
     telemetry:
       span: provider.onboard.auth
     operation: acquire_token
@@ -59,20 +52,8 @@ nodes:
         versioning: true
         tags: true
       component: greentic.secrets.provider.azure_kv
-  audit:
-    after: registration
-    telemetry:
-      span: provider.onboard.audit
-    operation: emit_event
-    component.exec:
-      sink: ${inputs.config.audit}
-      event:
-        kind: PROVIDER_ONBOARDED
-        provider: greentic.secrets.azure-kv
-        status: READY
-        registration_id: ${registration.output.registration_id}
-        correlation_id: ${inputs.correlation_id}
-      component: greentic.secrets.audit_exporter
+  # FIXME(audit-exporter): Audit emission removed because this pack referenced
+  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore the audit node after publishing it.
 outputs:
   status: OK
   provider:
@@ -86,6 +67,7 @@ outputs:
     rotate: true
     versioning: true
     tags: true
-  audit_events:
-  - ${audit.input.event}
+  # FIXME(audit-exporter): audit_events is intentionally empty until
+  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and the audit node is restored.
+  audit_events: []
   artifacts: []

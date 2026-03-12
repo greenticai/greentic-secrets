@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+command -v oras >/dev/null 2>&1 || { echo "oras is required" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
+
+OCI_REGISTRY="${OCI_REGISTRY:-ghcr.io}"
+OCI_NAMESPACE="${OCI_NAMESPACE:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+OCI_REPO="${OCI_REPO:-greentic-packs}"
+OCI_NAMESPACE="$(printf '%s' "${OCI_NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
+OCI_REPO="$(printf '%s' "${OCI_REPO}" | tr '[:upper:]' '[:lower:]')"
+PACK_VERSION="${PACK_VERSION:-}"
+if [ -z "${PACK_VERSION}" ]; then
+  if [ -f "dist/packs/VERSION" ]; then
+    PACK_VERSION="$(tr -d '[:space:]' < dist/packs/VERSION)"
+  else
+    PACK_VERSION="$(python3 - <<'PY'
+from pathlib import Path
+import re
+text = Path("Cargo.toml").read_text(encoding="utf-8")
+match = re.search(r'\[workspace\.package\].*?^version\s*=\s*"([^"]+)"', text, re.M | re.S)
+if not match:
+    raise SystemExit("workspace.package.version not found")
+print(match.group(1))
+PY
+)"
+  fi
+fi
+PACK_VERSION="${PACK_VERSION#v}"
+PUBLISH_LATEST="${PUBLISH_LATEST:-0}"
+PACK_MEDIA_TYPE="${PACK_MEDIA_TYPE:-application/vnd.greentic.gtpack.v1+zip}"
+
+if ! compgen -G "dist/packs/*.gtpack" >/dev/null; then
+  echo "No built packs found under dist/packs" >&2
+  exit 1
+fi
+
+python3 - "${PACK_VERSION}" "${OCI_REGISTRY}" "${OCI_NAMESPACE}" "${OCI_REPO}" "${PUBLISH_LATEST}" "${PACK_MEDIA_TYPE}" <<'PY'
+from pathlib import Path
+import json
+import subprocess
+import sys
+
+pack_version, registry, namespace, repo, publish_latest, media_type = sys.argv[1:]
+root = Path.cwd()
+lock_path = root / "packs.lock.json"
+lock = json.loads(lock_path.read_text(encoding="utf-8")) if lock_path.exists() else {"version": pack_version, "packs": []}
+packs_by_name = {entry["name"]: entry for entry in lock.get("packs", [])}
+
+for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
+    name = pack_path.stem
+    repo_path = f"{registry}/{namespace}/{repo}/{name}"
+    version_ref = f"{repo_path}:{pack_version}"
+    subprocess.run(
+        [
+            "oras",
+            "push",
+            version_ref,
+            f"{pack_path}:{media_type}",
+        ],
+        check=True,
+    )
+    if publish_latest.lower() in {"1", "true", "yes"}:
+        latest_ref = f"{repo_path}:latest"
+        subprocess.run(
+            [
+                "oras",
+                "push",
+                latest_ref,
+                f"{pack_path}:{media_type}",
+            ],
+            check=True,
+        )
+
+    entry = packs_by_name.setdefault(name, {"name": name})
+    entry["version"] = pack_version
+    entry["reference"] = f"oci://{version_ref}"
+    if publish_latest.lower() in {"1", "true", "yes"}:
+        entry["latest_reference"] = f"oci://{repo_path}:latest"
+
+lock["version"] = pack_version
+lock["packs"] = [packs_by_name[name] for name in sorted(packs_by_name)]
+lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+PY
+
+echo "Published secrets packs to ${OCI_REGISTRY}/${OCI_NAMESPACE}/${OCI_REPO}"

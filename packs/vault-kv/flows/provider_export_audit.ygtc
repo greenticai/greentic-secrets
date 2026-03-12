@@ -4,51 +4,21 @@ type: event
 entrypoints:
   default: {}
 nodes:
-  validate_config:
-    telemetry:
-      span: provider.export.config
-    operation: validate_config
-    component.exec:
-      config: ${inputs.config}
-      schema_ref: assets/schemas/secrets/vault-kv/config.schema.json
-      component: greentic.secrets.policy_validator
-  export:
-    after: validate_config
-    telemetry:
-      span: provider.export.export
-    output:
-      summary: ${data.summary}
-      cursor: ${data.cursor}
-    operation: export_batch
-    component.exec:
-      sink: ${inputs.config.audit}
-      cursor: ${inputs.cursor}
-      limit: ${inputs.limit}
-      component: greentic.secrets.audit_exporter
-  audit:
-    after: export
-    telemetry:
-      span: provider.export.audit
-    operation: emit_event
-    component.exec:
-      sink: ${inputs.config.audit}
-      event:
-        kind: AUDIT_EXPORTED
-        provider: greentic.secrets.vault-kv
-        status: OK
-        correlation_id: ${inputs.correlation_id}
-        summary: ${export.output.summary}
-      component: greentic.secrets.audit_exporter
+  # FIXME(policy-validator): Config validation is disabled because this pack referenced
+  # ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
+  # FIXME(audit-exporter): Audit export flow is disabled because this pack referenced
+  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore export/audit nodes after publishing it.
 outputs:
-  status: OK
+  status: NOT_IMPLEMENTED
   provider:
     id: greentic.secrets.vault-kv
     version: ${context.pack_version}
     tenant: ${inputs.config.tenant_id}
     environment: ${inputs.config.environment}
   correlation_id: ${inputs.correlation_id}
-  export_summary: ${export.output.summary}
-  export_cursor: ${export.output.cursor}
-  audit_events:
-  - ${audit.input.event}
+  # FIXME(audit-exporter): export_summary/export_cursor are placeholders until
+  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and export support is restored.
+  export_summary: audit export disabled; missing greentic.secrets.audit_exporter
+  export_cursor: ${inputs.cursor}
+  audit_events: []
   artifacts: []

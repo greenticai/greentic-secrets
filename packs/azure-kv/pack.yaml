@@ -67,7 +67,9 @@ extensions:
         config_schema_ref: assets/schemas/secrets/azure-kv/config.schema.json
         runtime:
           world: greentic:provider/schema-core@1.0.0
-          component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.azure_kv:__PACK_VERSION__
+          # FIXME(provider-version): Temporary fallback to the last known published tag.
+          # Switch this back to the latest workspace version once component publishing is fixed.
+          component_ref: ghcr.io/greentic-ai/components/secrets-provider-azure-kv:0.4.23
           export: invoke
         capabilities:
         - secrets
