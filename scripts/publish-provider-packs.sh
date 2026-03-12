@@ -8,7 +8,7 @@ command -v oras >/dev/null 2>&1 || { echo "oras is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
 OCI_REGISTRY="${OCI_REGISTRY:-ghcr.io}"
-OCI_NAMESPACE="${OCI_NAMESPACE:-greenticai}"
+OCI_NAMESPACE="${OCI_NAMESPACE:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
 OCI_REPO="${OCI_REPO:-packs/secrets}"
 OCI_NAMESPACE="$(printf '%s' "${OCI_NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
 OCI_REPO="$(printf '%s' "${OCI_REPO}" | tr '[:upper:]' '[:lower:]')"
@@ -77,6 +77,7 @@ for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
     name = pack_path.stem
     repo_path = f"{registry}/{namespace}/{repo}/{published_name(name)}"
     version_ref = f"{repo_path}:{pack_version}"
+    print(f"Publishing {pack_path.name} -> {version_ref}", flush=True)
     subprocess.run(
         [
             "oras",
@@ -88,6 +89,7 @@ for pack_path in sorted((root / "dist" / "packs").glob("*.gtpack")):
     )
     if publish_latest.lower() in {"1", "true", "yes"}:
         latest_ref = f"{repo_path}:latest"
+        print(f"Publishing {pack_path.name} -> {latest_ref}", flush=True)
         subprocess.run(
             [
                 "oras",

@@ -13,7 +13,7 @@ permissions:
 
 env:
   OCI_REGISTRY: ghcr.io
-  OCI_NAMESPACE: greenticai
+  OCI_NAMESPACE: ${{ github.repository_owner }}
   OCI_REPO: packs/secrets
 
 jobs:

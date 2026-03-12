@@ -92,7 +92,7 @@ jobs:
 
       - name: Push packs to GHCR
         env:
-          OCI_NAMESPACE: greenticai
+          OCI_NAMESPACE: ${{ github.repository_owner }}
           OCI_REPO: packs/secrets
           PACK_VERSION: ""
           PUBLISH_LATEST: "1"
