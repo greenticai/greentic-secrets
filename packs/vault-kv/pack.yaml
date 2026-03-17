@@ -67,7 +67,7 @@ extensions:
         config_schema_ref: assets/schemas/secrets/vault-kv/config.schema.json
         runtime:
           world: greentic:provider/schema-core@1.0.0
-          component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.vault_kv:__PACK_VERSION__
+          component_ref: ghcr.io/greentic-ai/components/secrets-provider-vault-kv:__PACK_VERSION__
           export: invoke
         capabilities:
         - secrets

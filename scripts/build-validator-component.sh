@@ -35,9 +35,7 @@ fi
 cp "${wasm_path}" "${OUT_DIR}/secrets-pack-validator.wasm"
 
 digest="$(sha256sum "${wasm_path}" | awk '{print $1}')"
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
-registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
-ref="ghcr.io/${registry_owner}/validators/secrets:${VERSION}"
+ref="ghcr.io/greenticai/validators/secrets:${VERSION}"
 digests_json="${OUT_DIR}/digests.json"
 echo "[]" > "${digests_json}"
 

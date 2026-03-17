@@ -10,7 +10,7 @@ permissions:
 
 env:
   RUST_VERSION: "1.91.1"
-  GREENTIC_PACK_REV: c3fe8aa
+  PACKS_OCI_NAMESPACE: ${{ vars.PACKS_OCI_NAMESPACE || github.repository_owner }}
 
 jobs:
   tools:
@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_REV }}
+          key: cargo-bin-${{ runner.os }}-greentic-pack-latest
       - name: Install cargo-binstall
         run: |
           if ! command -v cargo-binstall >/dev/null 2>&1; then
@@ -30,9 +30,7 @@ jobs:
           fi
       - name: Install greentic-pack and greentic-provision
         run: |
-          if ! command -v greentic-pack >/dev/null 2>&1; then
-            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" greentic-pack --bin greentic-pack
-          fi
+          cargo binstall greentic-pack --force --no-confirm --locked
           if ! command -v greentic-provision >/dev/null 2>&1; then
             cargo binstall -y greentic-provision
           fi
@@ -145,25 +143,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zip yq
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
-      - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: |
-          if [[ -z "${GHCR_TOKEN:-}" ]]; then
-            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
-            exit 1
-          fi
-          user="${GHCR_USER:-${GITHUB_ACTOR}}"
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
-          PACK_OFFLINE: "0"
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
+          PACK_USE_LOCAL_COMPONENTS: "1"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
@@ -207,13 +190,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Build components (wasm)
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
         run: ./scripts/build-components.sh
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
       - name: Login to GHCR
         env:
-          GHCR_USER: ${{ github.actor }}
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GH_FALLBACK_TOKEN: ${{ github.token }}
         run: |
@@ -268,8 +251,8 @@ jobs:
           echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
-          PACK_OFFLINE: "0"
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
+          PACK_USE_LOCAL_COMPONENTS: "1"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
@@ -288,21 +271,14 @@ jobs:
           - bundle: secrets-providers.gtpack
           EOF
       - name: Push packs to GHCR
+        env:
+          OCI_NAMESPACE: ${{ env.PACKS_OCI_NAMESPACE }}
+          OCI_REPO: packs/secrets
+          PACK_VERSION: ""
         run: |
-          set -euo pipefail
+          echo "Publishing provider packs from ${GITHUB_REF} to ghcr.io/${OCI_NAMESPACE}/${OCI_REPO}"
           VERSION=$(cat dist/packs/VERSION)
-          REGISTRY_OWNER=${{ github.repository_owner }}
-          for pack in dist/packs/secrets-*.gtpack; do
-            name=$(basename "${pack}" .gtpack)
-            ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/${name}:${VERSION}"
-            oras push "${ref}" \
-              "${pack}:application/vnd.greentic.pack+zip"
-            echo "::notice::Pushed ${ref}"
-          done
-          bundle_ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/secrets-providers:${VERSION}"
-          oras push "${bundle_ref}" \
-            "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
-          echo "::notice::Pushed ${bundle_ref}"
+          PACK_VERSION="${VERSION}" ./scripts/publish-provider-packs.sh
 
   build-and-push-validators:
     needs: [lint, test]
@@ -340,8 +316,6 @@ jobs:
           token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
           echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Publish validator component to GHCR
-        env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: ./scripts/publish-validators.sh
       - name: Build validator pack
         run: ./scripts/build-validator-pack.sh

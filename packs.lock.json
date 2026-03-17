@@ -1,0 +1,47 @@
+{
+  "version": "0.4.26",
+  "packs": [
+    {
+      "name": "secrets-aws-sm",
+      "pack_id": "greentic.secrets.aws-sm",
+      "published_name": "greentic.secrets.aws-sm.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-aws-sm.gtpack"
+    },
+    {
+      "name": "secrets-azure-kv",
+      "pack_id": "greentic.secrets.azure-kv",
+      "published_name": "greentic.secrets.azure-kv.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-azure-kv.gtpack"
+    },
+    {
+      "name": "secrets-gcp-sm",
+      "pack_id": "greentic.secrets.gcp-sm",
+      "published_name": "greentic.secrets.gcp-sm.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-gcp-sm.gtpack"
+    },
+    {
+      "name": "secrets-k8s",
+      "pack_id": "greentic.secrets.k8s",
+      "published_name": "greentic.secrets.k8s.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-k8s.gtpack"
+    },
+    {
+      "name": "secrets-providers",
+      "pack_id": "greentic.secrets.providers",
+      "published_name": "greentic.secrets.providers.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-providers.gtpack"
+    },
+    {
+      "name": "secrets-vault-kv",
+      "pack_id": "greentic.secrets.vault-kv",
+      "published_name": "greentic.secrets.vault-kv.gtpack",
+      "version": "0.4.26",
+      "artifact": "dist/packs/secrets-vault-kv.gtpack"
+    }
+  ]
+}

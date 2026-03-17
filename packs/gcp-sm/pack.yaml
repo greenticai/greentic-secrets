@@ -67,7 +67,7 @@ extensions:
         config_schema_ref: assets/schemas/secrets/gcp-sm/config.schema.json
         runtime:
           world: greentic:provider/schema-core@1.0.0
-          component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.gcp_sm:__PACK_VERSION__
+          component_ref: ghcr.io/greentic-ai/components/secrets-provider-gcp-sm:__PACK_VERSION__
           export: invoke
         capabilities:
         - secrets

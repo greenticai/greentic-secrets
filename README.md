@@ -243,6 +243,35 @@ backend features you need and run it alongside your existing infrastructure.
 
 Versions are sourced directly from each crate’s `Cargo.toml`. Every push to `master` checks for version bumps: if a crate changed, the workflow tags the commit as `<crate-name>-v<version>` and pushes the tag. The publish job then runs `cargo fmt`, `cargo clippy`, a full workspace build, and `cargo test` before invoking `katyo/publish-crates@v2`, which publishes only crates with new versions. Re-running on the same commit is safe: existing tags are skipped and already published versions short-circuit cleanly.
 
+### Local Provider-Pack Publish (GHCR)
+
+Build + publish provider packs locally (including `:latest` tags):
+
+```bash
+cd /Users/osoro/Documents/greetic/greentic-secrets
+cp .env.example .env
+# set OCI_USERNAME + OCI_TOKEN in .env
+./scripts/publish-provider-packs-local.sh
+```
+
+Build only (no publish):
+
+```bash
+./scripts/build-provider-packs.sh
+```
+
+### CI Provider-Pack Publish (Recommended)
+
+When local GHCR permissions are limited, publish via GitHub Actions using repo secrets:
+
+1. Add repo secrets:
+   - `GHCR_USERNAME`
+   - `GHCR_TOKEN` (with package write access)
+2. Set repo variable `PACKS_OCI_NAMESPACE` (for example `greenticai`).
+3. Run the **Provider Packs** workflow (`workflow_dispatch`) from `master`.
+
+This flow builds packs and publishes to `ghcr.io/<PACKS_OCI_NAMESPACE>/packs/secrets` with both version and `latest` tags. Manual publish jobs now only run from `refs/heads/master` to avoid deploying from feature branches.
+
 ## Releasing
 
 We publish workspace crates to crates.io via GitHub Actions:

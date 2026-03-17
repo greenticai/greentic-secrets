@@ -61,31 +61,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
+      - name: Install cargo-binstall
+        run: |
+          if ! command -v cargo-binstall >/dev/null 2>&1; then
+            cargo install cargo-binstall --locked
+          fi
       - name: Install greentic-pack + greentic-provision
         run: |
-          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
+          cargo binstall greentic-pack --force --no-confirm --locked
           cargo install greentic-provision --version 0.4.16
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
-      - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: |
-          if [[ -z "${GHCR_TOKEN:-}" ]]; then
-            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
-            exit 1
-          fi
-          user="${GHCR_USER:-${GITHUB_ACTOR}}"
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
-          PACK_OFFLINE: "0"
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
+          PACK_USE_LOCAL_COMPONENTS: "1"
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh

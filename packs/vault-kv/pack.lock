@@ -2,16 +2,10 @@ components:
   - id: greentic.secrets.provider.vault_kv
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.provider.vault_kv:__PACK_VERSION__
-  - id: greentic.secrets.generators
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__
-  - id: greentic.secrets.audit_exporter
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__
-  - id: greentic.secrets.policy_validator
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__
+    uri: ghcr.io/greentic-ai/components/secrets-provider-vault-kv:__PACK_VERSION__
+  # FIXME(generators): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__.
+  # FIXME(audit-exporter): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__.
+  # FIXME(policy-validator): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__.

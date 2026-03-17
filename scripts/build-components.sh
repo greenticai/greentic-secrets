@@ -33,9 +33,7 @@ echo "Building wasm components for version ${VERSION}"
 
 rustup target add wasm32-wasip2 >/dev/null
 
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
-registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
-REGISTRY_NAMESPACE="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
+REGISTRY_NAMESPACE="ghcr.io/greenticai/components"
 echo "Publishing namespace: ${REGISTRY_NAMESPACE}"
 
 digests_json="${OUT_DIR}/digests.json"

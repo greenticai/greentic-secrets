@@ -7,11 +7,23 @@ permissions:
   contents: read
   packages: write
 
+env:
+  PACKS_OCI_NAMESPACE: ${{ vars.PACKS_OCI_NAMESPACE || github.repository_owner }}
+
 jobs:
-  build-and-push:
+  ensure-master:
     runs-on: ubuntu-latest
-    env:
-      GREENTIC_PACK_REV: c3fe8aa
+    steps:
+      - name: Enforce publish source branch
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/master" ]]; then
+            echo "::error::Provider pack publishing must run from refs/heads/master. Current ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
+  build-and-push:
+    needs: ensure-master
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ env.GREENTIC_PACK_REV }}
+          key: cargo-bin-${{ runner.os }}-greentic-pack-latest
 
       - name: Install cargo-binstall
         run: |
@@ -36,9 +48,7 @@ jobs:
 
       - name: Install greentic-pack
         run: |
-          if ! command -v greentic-pack >/dev/null 2>&1; then
-            cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev "${GREENTIC_PACK_REV}" greentic-pack --bin greentic-pack
-          fi
+          cargo binstall greentic-pack --force --no-confirm --locked
 
       - name: Pack unit validation (provider-core extension + schemas + pack.lock)
         run: cargo test -p greentic-secrets-runner pack_validation
@@ -63,13 +73,13 @@ jobs:
 
       - name: Publish components to GHCR
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
         run: ./scripts/publish-components.sh
 
       - name: Build provider packs
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
-          PACK_OFFLINE: "0"
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
+          PACK_USE_LOCAL_COMPONENTS: "1"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
@@ -90,19 +100,11 @@ jobs:
           EOF
 
       - name: Push packs to GHCR
+        env:
+          OCI_NAMESPACE: ${{ env.PACKS_OCI_NAMESPACE }}
+          OCI_REPO: packs/secrets
+          PACK_VERSION: ""
         run: |
-          set -euo pipefail
+          echo "Publishing provider packs from ${GITHUB_REF} to ghcr.io/${OCI_NAMESPACE}/${OCI_REPO}"
           VERSION=$(cat dist/packs/VERSION)
-          REGISTRY_OWNER=${{ github.repository_owner }}
-          for pack in dist/packs/secrets-*.gtpack; do
-            name=$(basename "${pack}" .gtpack)
-            ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/${name}:${VERSION}"
-            oras push "${ref}" \
-              "${pack}:application/vnd.greentic.pack+zip"
-            echo "::notice::Pushed ${ref}"
-          done
-          # Push bundle
-          bundle_ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/secrets-providers:${VERSION}"
-          oras push "${bundle_ref}" \
-            "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
-          echo "::notice::Pushed ${bundle_ref}"
+          PACK_VERSION="${VERSION}" ./scripts/publish-provider-packs.sh

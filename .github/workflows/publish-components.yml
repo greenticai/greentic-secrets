@@ -23,7 +23,7 @@ jobs:
 
       - name: Build components (wasm)
         env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          COMPONENTS_REGISTRY: ghcr.io/greenticai/components
         run: ./scripts/build-components.sh
 
       - name: Set up ORAS
