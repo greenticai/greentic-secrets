@@ -5,7 +5,7 @@ entrypoints:
   default: {}
 nodes:
   # FIXME(policy-validator): Config validation is disabled because this pack referenced
-  # ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
+  # ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
   auth:
     telemetry:
       span: provider.onboard.auth
@@ -53,7 +53,7 @@ nodes:
         tags: true
       component: greentic.secrets.provider.gcp_sm
   # FIXME(audit-exporter): Audit emission removed because this pack referenced
-  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore the audit node after publishing it.
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore the audit node after publishing it.
 outputs:
   status: OK
   provider:
@@ -68,6 +68,6 @@ outputs:
     versioning: true
     tags: true
   # FIXME(audit-exporter): audit_events is intentionally empty until
-  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and the audit node is restored.
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and the audit node is restored.
   audit_events: []
   artifacts: []

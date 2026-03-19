@@ -5,11 +5,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIGESTS="${ROOT_DIR}/target/components/digests.json"
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 export COMPONENTS_REGISTRY="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 oci_registry_host="${COMPONENTS_REGISTRY%%/*}"
-ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greentic-ai}}}"
+ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greenticai}}}"
 ghcr_token="${GHCR_TOKEN:-${GITHUB_TOKEN:-${gh_pat:-${GH_PAT:-}}}}"
 
 "${ROOT_DIR}/scripts/build-components.sh"

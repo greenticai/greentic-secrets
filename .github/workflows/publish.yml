@@ -93,17 +93,7 @@ jobs:
         with:
           version: 1.2.0
       - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GH_FALLBACK_TOKEN: ${{ github.token }}
-        run: |
-          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
-          if [[ -z "${token}" ]]; then
-            echo "No token available for GHCR login." >&2
-            exit 1
-          fi
-          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Publish components to GHCR
         run: ./scripts/publish-components.sh
       - name: Upload component digests
@@ -151,13 +141,7 @@ jobs:
         with:
           version: 1.2.0
       - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GH_FALLBACK_TOKEN: ${{ github.token }}
-        run: |
-          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
-          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Pack unit validation
         run: cargo test -p greentic-secrets-runner pack_validation
       - name: Build packs
@@ -228,17 +212,7 @@ jobs:
           name: secrets-gtpack-artifacts
           path: dist/packs
       - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GH_FALLBACK_TOKEN: ${{ github.token }}
-        run: |
-          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
-          if [[ -z "${token}" ]]; then
-            echo "No token available for GHCR login." >&2
-            exit 1
-          fi
-          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Publish packs
         env:
           OCI_NAMESPACE: ${{ github.repository_owner }}

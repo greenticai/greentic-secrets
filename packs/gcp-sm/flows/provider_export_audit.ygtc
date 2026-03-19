@@ -5,9 +5,9 @@ entrypoints:
   default: {}
 nodes:
   # FIXME(policy-validator): Config validation is disabled because this pack referenced
-  # ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
+  # ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
   # FIXME(audit-exporter): Audit export flow is disabled because this pack referenced
-  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore export/audit nodes after publishing it.
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore export/audit nodes after publishing it.
 outputs:
   status: NOT_IMPLEMENTED
   provider:
@@ -17,7 +17,7 @@ outputs:
     environment: ${inputs.config.environment}
   correlation_id: ${inputs.correlation_id}
   # FIXME(audit-exporter): export_summary/export_cursor are placeholders until
-  # ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and export support is restored.
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and export support is restored.
   export_summary: audit export disabled; missing greentic.secrets.audit_exporter
   export_cursor: ${inputs.cursor}
   audit_events: []

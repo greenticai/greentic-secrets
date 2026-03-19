@@ -14,7 +14,7 @@ VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACKS_LOCKFILE="${PACKS_LOCKFILE:-$ROOT_DIR/packs.lock.json}"
 PACK_OFFLINE="${PACK_OFFLINE:-0}"
 PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-1}"
-registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 packs_registry="${PACKS_REGISTRY:-ghcr.io}"
 packs_namespace="${PACKS_NAMESPACE:-greenticai}"
@@ -23,7 +23,7 @@ packs_namespace="$(printf '%s' "${packs_namespace}" | tr '[:upper:]' '[:lower:]'
 packs_repo="$(printf '%s' "${packs_repo}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 oci_registry_host="${components_registry%%/*}"
-ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greentic-ai}}}"
+ghcr_user="${GHCR_USERNAME:-${GITHUB_ACTOR:-${USER:-greenticai}}}"
 ghcr_token="${GHCR_TOKEN:-${GITHUB_TOKEN:-${gh_pat:-${GH_PAT:-}}}}"
 
 VERSION="$(python3 - <<'PY'
@@ -150,17 +150,32 @@ for slug in "${providers[@]}"; do
   done
 
   # Rewrite default component namespace so forks/orgs resolve correctly.
-  sed -i.bak "s|ghcr.io/greentic-ai/components|${components_registry}|g" "${staging}/gtpack.yaml"
+  sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/gtpack.yaml"
   rm -f "${staging}/gtpack.yaml.bak"
 
   if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" ]]; then
     ensure_local_components
     case "${slug}" in
-      aws-sm) provider_artifact="secrets-provider-aws-sm.wasm" ;;
-      azure-kv) provider_artifact="secrets-provider-azure-kv.wasm" ;;
-      gcp-sm) provider_artifact="secrets-provider-gcp-sm.wasm" ;;
-      k8s) provider_artifact="secrets-provider-k8s.wasm" ;;
-      vault-kv) provider_artifact="secrets-provider-vault-kv.wasm" ;;
+      aws-sm)
+        provider_artifact="secrets-provider-aws-sm.wasm"
+        provider_id="greentic.secrets.provider.aws_sm"
+        ;;
+      azure-kv)
+        provider_artifact="secrets-provider-azure-kv.wasm"
+        provider_id="greentic.secrets.provider.azure_kv"
+        ;;
+      gcp-sm)
+        provider_artifact="secrets-provider-gcp-sm.wasm"
+        provider_id="greentic.secrets.provider.gcp_sm"
+        ;;
+      k8s)
+        provider_artifact="secrets-provider-k8s.wasm"
+        provider_id="greentic.secrets.provider.k8s"
+        ;;
+      vault-kv)
+        provider_artifact="secrets-provider-vault-kv.wasm"
+        provider_id="greentic.secrets.provider.vault_kv"
+        ;;
       *)
         echo "unknown provider slug for local component mapping: ${slug}" >&2
         exit 1
@@ -171,11 +186,12 @@ for slug in "${providers[@]}"; do
       echo "missing local provider component: ${provider_component_path}" >&2
       exit 1
     fi
+    provider_runtime_id="${provider_artifact%.wasm}"
     mkdir -p "${staging}/components"
     cp "${provider_component_path}" "${staging}/components/${provider_artifact}"
     staged_provider_component_path="${staging}/components/${provider_artifact}"
     provider_component_uri="file://${staged_provider_component_path}"
-    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" "${provider_component_uri}" "${slug}" <<'PY'
+    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" "${provider_component_uri}" "${provider_id}" <<'PY'
 from pathlib import Path
 import sys
 import yaml
@@ -183,16 +199,7 @@ import yaml
 gtpack_path = Path(sys.argv[1])
 pack_path = Path(sys.argv[2])
 component_uri = sys.argv[3]
-slug = sys.argv[4]
-
-provider_ids = {
-    "aws-sm": "greentic.secrets.provider.aws_sm",
-    "azure-kv": "greentic.secrets.provider.azure_kv",
-    "gcp-sm": "greentic.secrets.provider.gcp_sm",
-    "k8s": "greentic.secrets.provider.k8s",
-    "vault-kv": "greentic.secrets.provider.vault_kv",
-}
-provider_id = provider_ids[slug]
+provider_id = sys.argv[4]
 
 gtpack = yaml.safe_load(gtpack_path.read_text()) or {}
 for comp in gtpack.get("components") or []:
@@ -208,41 +215,30 @@ yaml.safe_dump(gtpack, gtpack_path.open("w"), sort_keys=False)
 pack = yaml.safe_load(pack_path.read_text()) or {}
 extensions = (pack.get("extensions") or {}).get("greentic.provider-extension.v1") or {}
 inline = extensions.get("inline") or {}
-providers = inline.get("providers") or []
-provider_runtime = {}
-provider_ops = []
-for provider in providers:
+for provider in inline.get("providers") or []:
     runtime = (provider.get("runtime") or {})
     if runtime.get("component_ref"):
         runtime["component_ref"] = component_uri
-    provider_runtime = runtime or provider_runtime
-    provider_ops = list(provider.get("ops") or provider_ops)
-pack["components"] = [
-    {
-        "id": provider_id,
-        "version": str(pack.get("version") or "0.0.0"),
-        "world": provider_runtime.get("world", "greentic:provider/schema-core@1.0.0"),
-        "supports": [],
-        "profiles": {
-            "default": "stateless",
-            "supported": ["stateless"],
-        },
-        "capabilities": {
-            "wasi": {},
-            "host": {},
-        },
-        "operations": [
-            {
-                "name": op,
-                "input_schema": {},
-                "output_schema": {},
-            }
-            for op in provider_ops
-        ],
-        "wasm": f"components/{Path(component_uri[len('file://'):]).name}",
-    }
-]
 yaml.safe_dump(pack, pack_path.open("w"), sort_keys=False)
+PY
+
+    # Link flow refs to the concrete built component ID so doctor can resolve
+    # node component references against bundled metadata.
+    python3 - "${staging}" "${provider_id}" "${provider_runtime_id}" <<'PY'
+import sys
+from pathlib import Path
+
+staging = Path(sys.argv[1])
+logical_id = sys.argv[2]
+runtime_id = sys.argv[3]
+
+paths = [staging / "gtpack.yaml", staging / "pack.yaml"]
+paths.extend(sorted((staging / "flows").glob("*.ygtc")))
+
+for path in paths:
+    text = path.read_text()
+    if logical_id in text:
+        path.write_text(text.replace(logical_id, runtime_id))
 PY
   fi
 
@@ -272,6 +268,31 @@ PY
 
   LOCK_FILE="${staging}/pack.lock.json"
   run_pack greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}"
+
+  # Resolve currently emits empty flow sidecars for this pack shape.
+  # Hydrate .resolve.json from generated summary sidecars before build.
+  python3 - "${staging}/flows" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+flows_dir = Path(sys.argv[1])
+for summary_path in flows_dir.glob("*.resolve.summary.json"):
+    summary = json.loads(summary_path.read_text())
+    stem = summary_path.name.removesuffix(".resolve.summary.json")
+    resolve_path = flows_dir / f"{stem}.resolve.json"
+    if resolve_path.exists():
+        resolved = json.loads(resolve_path.read_text())
+    else:
+        resolved = {
+            "schema_version": 1,
+            "flow": f"flows/{stem}",
+            "nodes": {},
+        }
+    resolved["nodes"] = summary.get("nodes", {})
+    resolve_path.write_text(json.dumps(resolved, indent=2, sort_keys=True))
+PY
+
   run_pack greentic-pack build \
     --in "${staging}" \
     --lock "${LOCK_FILE}" \

@@ -8,26 +8,24 @@ command -v oras >/dev/null 2>&1 || { echo "oras is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
 OCI_REGISTRY="${OCI_REGISTRY:-ghcr.io}"
-OCI_NAMESPACE="${OCI_NAMESPACE:-${GITHUB_REPOSITORY_OWNER:-greentic-ai}}"
+OCI_NAMESPACE="${OCI_NAMESPACE:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 OCI_REPO="${OCI_REPO:-packs/secrets}"
 OCI_NAMESPACE="$(printf '%s' "${OCI_NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
 OCI_REPO="$(printf '%s' "${OCI_REPO}" | tr '[:upper:]' '[:lower:]')"
 PACK_VERSION="${PACK_VERSION:-}"
 if [ -z "${PACK_VERSION}" ]; then
-  if [ -f "dist/packs/VERSION" ]; then
-    PACK_VERSION="$(tr -d '[:space:]' < dist/packs/VERSION)"
-  else
-    PACK_VERSION="$(python3 - <<'PY'
+  PACK_VERSION="$(python3 - <<'PY'
 from pathlib import Path
-import re
-text = Path("Cargo.toml").read_text(encoding="utf-8")
-match = re.search(r'\[workspace\.package\].*?^version\s*=\s*"([^"]+)"', text, re.M | re.S)
-if not match:
-    raise SystemExit("workspace.package.version not found")
-print(match.group(1))
+import tomllib
+
+version_file = Path("dist/packs/VERSION")
+if version_file.exists():
+    print(version_file.read_text(encoding="utf-8").strip())
+else:
+    data = tomllib.loads(Path("Cargo.toml").read_text(encoding="utf-8"))
+    print(data.get("workspace", {}).get("package", {}).get("version", "0.0.0"))
 PY
 )"
-  fi
 fi
 PACK_VERSION="${PACK_VERSION#v}"
 PUBLISH_LATEST="${PUBLISH_LATEST:-0}"
@@ -51,10 +49,7 @@ lock = json.loads(lock_path.read_text(encoding="utf-8")) if lock_path.exists() e
 packs_by_name = {entry["name"]: entry for entry in lock.get("packs", [])}
 
 def oras_artifact_arg(pack_path: Path) -> str:
-    try:
-        artifact_path = pack_path.relative_to(root)
-    except ValueError:
-        artifact_path = pack_path
+    artifact_path = pack_path.relative_to(root)
     return f"{artifact_path.as_posix()}:{media_type}"
 
 def published_name(name: str) -> str:
