@@ -152,14 +152,13 @@ jobs:
           version: 1.2.0
       - name: Login to GHCR
         env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
           if [[ -z "${GHCR_TOKEN:-}" ]]; then
             echo "GHCR_TOKEN is required for GHCR publish." >&2
             exit 1
           fi
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
       - name: Pack unit validation
         run: cargo test -p greentic-secrets-runner pack_validation
       - name: Build packs
@@ -231,21 +230,19 @@ jobs:
           path: dist/packs
       - name: Login to GHCR
         env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
           if [[ -z "${GHCR_TOKEN:-}" ]]; then
             echo "GHCR_TOKEN is required for GHCR publish." >&2
             exit 1
           fi
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
       - name: Publish packs
         env:
           OCI_NAMESPACE: ${{ github.repository_owner }}
           OCI_REPO: ${{ env.OCI_REPO }}
           PACK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           PUBLISH_LATEST: "1"
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: ./scripts/publish-provider-packs.sh
       - name: Upload published packs lockfile
