@@ -93,7 +93,14 @@ jobs:
         with:
           version: 1.2.0
       - name: Login to GHCR
-        run: echo "${{ secrets.GHCR_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for GHCR publish." >&2
+            exit 1
+          fi
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
       - name: Publish components to GHCR
         env:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
@@ -144,7 +151,15 @@ jobs:
         with:
           version: 1.2.0
       - name: Login to GHCR
-        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for GHCR publish." >&2
+            exit 1
+          fi
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Pack unit validation
         run: cargo test -p greentic-secrets-runner pack_validation
       - name: Build packs
@@ -215,7 +230,15 @@ jobs:
           name: secrets-gtpack-artifacts
           path: dist/packs
       - name: Login to GHCR
-        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for GHCR publish." >&2
+            exit 1
+          fi
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Publish packs
         env:
           OCI_NAMESPACE: ${{ github.repository_owner }}
