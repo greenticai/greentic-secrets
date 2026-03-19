@@ -69,13 +69,49 @@ jobs:
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
 
-  component-doctor:
+  publish-components:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     needs: sync-packs
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Component doctor placeholder
-        run: echo "greentic-secrets builds provider packs against OCI-hosted components; no separate component artifact stage here."
+      - name: Install Rust 1.90 with wasm target
+        uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          targets: wasm32-wasip2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Build components (wasm)
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+        run: ./scripts/build-components.sh
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GH_FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
+          if [[ -z "${token}" ]]; then
+            echo "No token available for GHCR login." >&2
+            exit 1
+          fi
+          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+      - name: Publish components to GHCR
+        run: ./scripts/publish-components.sh
+      - name: Upload component digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-digests
+          path: target/components/digests.json
+          if-no-files-found: error
 
   questions-component-test:
     runs-on: ubuntu-latest
@@ -87,7 +123,7 @@ jobs:
 
   build-packs:
     runs-on: ubuntu-latest
-    needs: [sync-packs, flow-doctor, component-doctor, questions-component-test]
+    needs: [sync-packs, flow-doctor, publish-components, questions-component-test]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
@@ -174,7 +210,7 @@ jobs:
           dry-run: false
 
   publish-packs:
-    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false)
     needs: build-packs
     runs-on: ubuntu-latest
     permissions:
@@ -195,12 +231,14 @@ jobs:
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GH_FALLBACK_TOKEN: ${{ github.token }}
         run: |
-          if [[ -z "${GHCR_TOKEN:-}" ]]; then
-            echo "GHCR_TOKEN is required for publishing packs. github.token fallback is disabled because it can lack GHCR publish permissions." >&2
+          token="${GHCR_TOKEN:-${GH_FALLBACK_TOKEN}}"
+          if [[ -z "${token}" ]]; then
+            echo "No token available for GHCR login." >&2
             exit 1
           fi
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
+          echo "${token}" | oras login ghcr.io -u "${GHCR_USER}" --password-stdin
       - name: Publish packs
         env:
           OCI_NAMESPACE: ${{ github.repository_owner }}
