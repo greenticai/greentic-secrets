@@ -4,16 +4,9 @@ type: event
 entrypoints:
   default: {}
 nodes:
-  validate_config:
-    telemetry:
-      span: provider.validate.config
-    operation: validate_config
-    component.exec:
-      config: ${inputs.config}
-      schema_ref: assets/schemas/secrets/gcp-sm/config.schema.json
-      component: greentic.secrets.policy_validator
+  # FIXME(policy-validator): Config validation is disabled because this pack referenced
+  # ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__, which is not published. Restore the validate_config node after publishing it.
   health_check:
-    after: validate_config
     telemetry:
       span: provider.validate.health
     output:
@@ -22,20 +15,8 @@ nodes:
     component.exec:
       config: ${inputs.config}
       component: greentic.secrets.provider.gcp_sm
-  audit:
-    after: health_check
-    telemetry:
-      span: provider.validate.audit
-    operation: emit_event
-    component.exec:
-      sink: ${inputs.config.audit}
-      event:
-        kind: PROVIDER_VALIDATED
-        provider: greentic.secrets.gcp-sm
-        status: ${health_check.output.validation_report.status}
-        correlation_id: ${inputs.correlation_id}
-        report_ref: validation_report.json
-      component: greentic.secrets.audit_exporter
+  # FIXME(audit-exporter): Audit emission removed because this pack referenced
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__, which is not published. Restore the audit node after publishing it.
 outputs:
   status: ${health_check.output.validation_report.status}
   provider:
@@ -44,8 +25,9 @@ outputs:
     tenant: ${inputs.config.tenant_id}
     environment: ${inputs.config.environment}
   correlation_id: ${inputs.correlation_id}
-  audit_events:
-  - ${audit.input.event}
+  # FIXME(audit-exporter): audit_events is intentionally empty until
+  # ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__ is published and the audit node is restored.
+  audit_events: []
   artifacts:
   - path: validation_report.json
     content: ${health_check.output.validation_report}

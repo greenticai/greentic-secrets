@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 description = "Secrets domain pack validators for Greentic packs."
-repository = "https://github.com/greentic-ai/greentic-secrets"
+repository = "https://github.com/greenticai/greentic-secrets"
 
 [dependencies]
 greentic_types_validate = { package = "greentic-types", version = "0.4.37", default-features = false, features = ["serde", "std"] }

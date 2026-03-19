@@ -16,19 +16,13 @@ components:
   - id: greentic.secrets.provider.vault_kv
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.provider.vault_kv:__PACK_VERSION__
-  - id: greentic.secrets.generators
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__
-  - id: greentic.secrets.audit_exporter
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__
-  - id: greentic.secrets.policy_validator
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__
+    uri: ghcr.io/greenticai/components/secrets-provider-vault-kv:__PACK_VERSION__
+  # FIXME(generators): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greenticai/components/greentic.secrets.generators:__PACK_VERSION__.
+  # FIXME(audit-exporter): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__.
+  # FIXME(policy-validator): Removed unresolved component reference.
+  # Restore after publishing ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__.
 schemas:
   config: schemas/secrets/vault-kv/config.schema.json
   secrets: schemas/secrets/vault-kv/secret.schema.json
@@ -41,7 +35,7 @@ extensions:
       id: greentic.secrets.vault-kv
       runtime:
         world: "greentic:provider-schema-core/schema-core@1.0.0"
-        component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.vault_kv:__PACK_VERSION__
+        component_ref: ghcr.io/greenticai/components/secrets-provider-vault-kv:__PACK_VERSION__
         export: "invoke"
   greentic.secrets.validators.v1:
     kind: greentic.secrets.validators.v1
@@ -49,4 +43,4 @@ extensions:
     validators:
       - id: greentic.validators.secrets
         world: "greentic:pack-validate/pack-validator@0.1.0"
-        component_ref: ghcr.io/greentic-ai/validators/secrets:__PACK_VERSION__
+        component_ref: ghcr.io/greenticai/validators/secrets:__PACK_VERSION__

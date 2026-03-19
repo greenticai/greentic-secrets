@@ -6,7 +6,7 @@ Nightly/manual workflows run GCP Secret Manager conformance tests using GitHub O
 
 1. Create a Workload Identity Pool and Provider that trusts GitHub:
    - Issuer: `https://token.actions.githubusercontent.com`
-   - Allowed subject: `repo:greentic-ai/greentic-secrets:*`
+   - Allowed subject: `repo:greenticai/greentic-secrets:*`
 2. Bind the provider to a service account used for tests.
 
 ## Required roles (least privilege)

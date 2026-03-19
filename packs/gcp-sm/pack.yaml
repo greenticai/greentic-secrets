@@ -67,7 +67,7 @@ extensions:
         config_schema_ref: assets/schemas/secrets/gcp-sm/config.schema.json
         runtime:
           world: greentic:provider/schema-core@1.0.0
-          component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.gcp_sm:__PACK_VERSION__
+          component_ref: ghcr.io/greenticai/components/secrets-provider-gcp-sm:__PACK_VERSION__
           export: invoke
         capabilities:
         - secrets
@@ -86,7 +86,7 @@ extensions:
       validators:
       - id: greentic.validators.secrets
         world: greentic:pack-validate/pack-validator@0.1.0
-        component_ref: ghcr.io/greentic-ai/validators/secrets:__PACK_VERSION__
+        component_ref: ghcr.io/greenticai/validators/secrets:__PACK_VERSION__
   greentic.ext.capabilities.v1:
     kind: greentic.ext.capabilities.v1
     version: 1.0.0

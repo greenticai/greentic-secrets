@@ -31,7 +31,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
-version = "0.4.25"
+version = "0.4.26"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -91,7 +91,7 @@ greentic-types = { version = "0.4", features = ["telemetry-autoinit"] }
 url = "2"
 uuid = "1"
 wit-bindgen = "0.53"
-wasmtime = { version = "41", features = ["cranelift"] }
+wasmtime = { version = "42", features = ["cranelift"] }
 wasmparser = { version = "0.245", default-features = false, features = ["component-model"] }
 wat = "1"
 greentic_secrets_api = { package = "greentic-secrets-api", version = "0.4", path = "greentic-secrets-api" }

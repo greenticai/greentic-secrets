@@ -70,6 +70,7 @@ jobs:
         env:
           COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
+          PACK_USE_LOCAL_COMPONENTS: "1"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
@@ -90,19 +91,11 @@ jobs:
           EOF
 
       - name: Push packs to GHCR
+        env:
+          OCI_NAMESPACE: ${{ github.repository_owner }}
+          OCI_REPO: packs/secrets
+          PACK_VERSION: ""
+          PUBLISH_LATEST: "1"
         run: |
-          set -euo pipefail
           VERSION=$(cat dist/packs/VERSION)
-          REGISTRY_OWNER=${{ github.repository_owner }}
-          for pack in dist/packs/secrets-*.gtpack; do
-            name=$(basename "${pack}" .gtpack)
-            ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/${name}:${VERSION}"
-            oras push "${ref}" \
-              "${pack}:application/vnd.greentic.pack+zip"
-            echo "::notice::Pushed ${ref}"
-          done
-          # Push bundle
-          bundle_ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/secrets-providers:${VERSION}"
-          oras push "${bundle_ref}" \
-            "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
-          echo "::notice::Pushed ${bundle_ref}"
+          PACK_VERSION="${VERSION}" ./scripts/publish-provider-packs.sh
