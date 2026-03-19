@@ -93,8 +93,11 @@ jobs:
         with:
           version: 1.2.0
       - name: Login to GHCR
-        run: echo "${{ github.token }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: echo "${{ secrets.GHCR_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Publish components to GHCR
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: ./scripts/publish-components.sh
       - name: Upload component digests
         uses: actions/upload-artifact@v4
@@ -219,6 +222,8 @@ jobs:
           OCI_REPO: ${{ env.OCI_REPO }}
           PACK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           PUBLISH_LATEST: "1"
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: ./scripts/publish-provider-packs.sh
       - name: Upload published packs lockfile
         uses: actions/upload-artifact@v4
