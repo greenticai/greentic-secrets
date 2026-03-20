@@ -12,7 +12,7 @@ use greentic_types::{FlowId, PackId, encode_pack_manifest};
 use indexmap::IndexMap;
 use serde_json::json;
 use zip::ZipWriter;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 
 struct StubRunner {
     stdout: String,
@@ -197,7 +197,7 @@ fn write_pack(path: &PathBuf, pack_id: &str) -> anyhow::Result<()> {
 
     let file = fs::File::create(path)?;
     let mut zip = ZipWriter::new(file);
-    let opts = FileOptions::default();
+    let opts = SimpleFileOptions::default();
 
     zip.start_file("manifest.cbor", opts)?;
     zip.write_all(&bytes)?;

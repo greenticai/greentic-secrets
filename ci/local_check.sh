@@ -94,6 +94,26 @@ run_or_skip() {
   return 1
 }
 
+run_build_provider_packs_or_skip() {
+  local out_dir="$1"
+  local output
+
+  if output=$(OUT_DIR="${out_dir}" "${REPO_ROOT}/scripts/build-provider-packs.sh" 2>&1); then
+    printf "%s\n" "$output"
+    return 0
+  fi
+
+  printf "%s\n" "$output"
+  if [[ "$LOCAL_CHECK_ONLINE" != "1" ]] \
+    && [[ "$output" == *"offline cache miss for oci://ghcr.io/"* ]] \
+    && [[ "$output" == *"/components/"* ]]; then
+    echo "[skip] provider pack build requires cached OCI component blobs in offline mode"
+    return 1
+  fi
+
+  return 2
+}
+
 require_online() {
   if [[ "$LOCAL_CHECK_ONLINE" == "1" ]]; then
     return 0
@@ -234,7 +254,16 @@ fi
 run_pack_doctor() {
   step "greentic-pack doctor --validate (secrets provider packs)"
   local out_dir="${REPO_ROOT}/dist/packs"
-  OUT_DIR="${out_dir}" "${REPO_ROOT}/scripts/build-provider-packs.sh"
+  set +e
+  run_build_provider_packs_or_skip "${out_dir}"
+  local status=$?
+  set -e
+  if [[ "$status" == "1" ]]; then
+    return 0
+  fi
+  if [[ "$status" != "0" ]]; then
+    return "$status"
+  fi
   for pack in "${out_dir}"/secrets-*.gtpack; do
     greentic-pack doctor \
       --validate \
@@ -253,7 +282,16 @@ fi
 run_secrets_e2e() {
   step "greentic-secrets-test e2e (dry-run)"
   local out_dir="${REPO_ROOT}/dist/packs"
-  OUT_DIR="${out_dir}" "${REPO_ROOT}/scripts/build-provider-packs.sh"
+  set +e
+  run_build_provider_packs_or_skip "${out_dir}"
+  local status=$?
+  set -e
+  if [[ "$status" == "1" ]]; then
+    return 0
+  fi
+  if [[ "$status" != "0" ]]; then
+    return "$status"
+  fi
   cargo run -p greentic-secrets-test --bin greentic-secrets-test "${CARGO_OFFLINE_ARGS[@]}" -- e2e --packs "${out_dir}"
 }
 

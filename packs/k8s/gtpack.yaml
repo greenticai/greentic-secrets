@@ -16,19 +16,19 @@ components:
   - id: greentic.secrets.provider.k8s
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.provider.k8s:__PACK_VERSION__
+    uri: ghcr.io/greenticai/components/greentic.secrets.provider.k8s:__PACK_VERSION__
   - id: greentic.secrets.generators
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.generators:__PACK_VERSION__
+    uri: ghcr.io/greenticai/components/greentic.secrets.generators:__PACK_VERSION__
   - id: greentic.secrets.audit_exporter
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.audit_exporter:__PACK_VERSION__
+    uri: ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__
   - id: greentic.secrets.policy_validator
     version: "__PACK_VERSION__"
     source: oci
-    uri: ghcr.io/greentic-ai/components/greentic.secrets.policy_validator:__PACK_VERSION__
+    uri: ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__
 schemas:
   config: schemas/secrets/k8s/config.schema.json
   secrets: schemas/secrets/k8s/secret.schema.json
@@ -41,7 +41,7 @@ extensions:
       id: greentic.secrets.k8s
       runtime:
         world: "greentic:provider-schema-core/schema-core@1.0.0"
-        component_ref: ghcr.io/greentic-ai/components/greentic.secrets.provider.k8s:__PACK_VERSION__
+        component_ref: ghcr.io/greenticai/components/greentic.secrets.provider.k8s:__PACK_VERSION__
         export: "invoke"
   greentic.secrets.validators.v1:
     kind: greentic.secrets.validators.v1
@@ -49,4 +49,4 @@ extensions:
     validators:
       - id: greentic.validators.secrets
         world: "greentic:pack-validate/pack-validator@0.1.0"
-        component_ref: ghcr.io/greentic-ai/validators/secrets:__PACK_VERSION__
+        component_ref: ghcr.io/greenticai/validators/secrets:__PACK_VERSION__

@@ -10,7 +10,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use greentic_secrets_spec::{SeedDoc, SeedEntry, SeedValue};
 use greentic_types::secrets::{SecretFormat, SecretRequirement, SecretScope};
 #[cfg(feature = "schema-validate")]
-use jsonschema::JSONSchema;
+use jsonschema::validator_for;
 use reqwest::Client;
 use std::sync::{Arc, Mutex};
 
@@ -198,11 +198,14 @@ fn scopes_match(uri_scope: &greentic_secrets_spec::Scope, req_scope: Option<&Sec
 
 #[cfg(feature = "schema-validate")]
 fn validate_json_schema(value: &serde_json::Value, schema: &serde_json::Value) -> Result<()> {
-    let compiled = JSONSchema::compile(schema)
-        .map_err(|err| Error::Invalid("schema".into(), err.to_string()))?;
+    let compiled =
+        validator_for(schema).map_err(|err| Error::Invalid("schema".into(), err.to_string()))?;
 
-    if let Err(errors) = compiled.validate(value) {
-        let messages: Vec<String> = errors.map(|err| err.to_string()).collect();
+    let messages: Vec<String> = compiled
+        .iter_errors(value)
+        .map(|err| err.to_string())
+        .collect();
+    if !messages.is_empty() {
         return Err(Error::Invalid("json".into(), messages.join("; ")));
     }
     Ok(())

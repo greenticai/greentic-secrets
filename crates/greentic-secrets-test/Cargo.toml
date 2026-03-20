@@ -16,11 +16,11 @@ clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_cbor = { workspace = true }
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
+zip = { workspace = true, features = ["deflate"] }
 tempfile = { workspace = true }
 greentic-types = { workspace = true }
-wasmtime = { version = "41", features = ["cranelift"] }
-wat = "1"
+wasmtime = { workspace = true }
+wat = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

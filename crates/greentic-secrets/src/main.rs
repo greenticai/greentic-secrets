@@ -1139,7 +1139,7 @@ mod tests {
     use std::fs::File;
     use std::path::Path;
     use tempfile::tempdir;
-    use zip::write::{FileOptions, ZipWriter};
+    use zip::write::{SimpleFileOptions, ZipWriter};
 
     #[test]
     fn read_pack_requirements_reads_pack_id_from_manifest() -> Result<()> {
@@ -1196,7 +1196,7 @@ mod tests {
 
         let file = File::create(path)?;
         let mut zip = ZipWriter::new(file);
-        let opts = FileOptions::default();
+        let opts = SimpleFileOptions::default();
         zip.start_file("manifest.cbor", opts)?;
         zip.write_all(&manifest_bytes)?;
         zip.start_file("assets/secret_requirements.json", opts)?;

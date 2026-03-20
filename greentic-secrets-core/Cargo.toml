@@ -53,7 +53,7 @@ anyhow = { workspace = true }
 url = { workspace = true }
 greentic-types = { workspace = true }
 async-trait = { workspace = true }
-jsonschema = { version = "0.17", optional = true }
+jsonschema = {workspace = true , optional = true }
 greentic_secrets_provider_dev = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -13,7 +13,7 @@ serde_cbor = { workspace = true }
 thiserror = { workspace = true }
 greentic-types = { workspace = true }
 serde_yaml = { workspace = true }
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
+zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 greentic-interfaces = { workspace = true, default-features = false, features = ["bindings-rust", "provider-core-v1"] }
