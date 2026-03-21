@@ -170,6 +170,28 @@ Signing key reference helpers (no signing logic) are documented in
 API key reference helpers for store/distributor/billing are in
 [`docs/api_key_refs.md`](docs/api_key_refs.md).
 
+## Component publishing
+
+Build all wasm components and refresh digests:
+
+```bash
+bash scripts/build-components.sh
+```
+
+Build or publish only the audit exporter component:
+
+```bash
+COMPONENT_FILTER=greentic.secrets.audit_exporter bash scripts/build-components.sh
+COMPONENT_FILTER=greentic.secrets.audit_exporter bash scripts/publish-components.sh
+```
+
+When building provider packs, the shared audit exporter component is prebuilt automatically if its digest is missing. Override with:
+
+```bash
+PREBUILD_COMPONENTS=0 bash scripts/build-provider-packs.sh
+SHARED_COMPONENT_FILTER=greentic.secrets.audit_exporter bash scripts/build-provider-packs.sh
+```
+
 ## Self-described secrets
 
 Libraries can publish their required secrets by implementing

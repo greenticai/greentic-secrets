@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "components/secrets-audit-exporter",
     "components/secrets-provider-inmemory",
     "components/secrets-provider-aws-sm",
     "components/secrets-provider-azure-kv",

@@ -5880,6 +5880,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrets-audit-exporter"
+version = "0.1.0"
+dependencies = [
+ "greentic-interfaces",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "wit-bindgen 0.54.0",
+]
+
+[[package]]
 name = "secrets-provider-aws-sm"
 version = "0.1.0"
 dependencies = [

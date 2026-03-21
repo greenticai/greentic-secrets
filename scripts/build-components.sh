@@ -6,6 +6,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT_DIR}/target/components"
+COMPONENT_FILTER_RAW="${COMPONENT_FILTER:-}"
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
 
@@ -21,13 +22,37 @@ PY
 )"
 
 components=(
-  secrets-provider-inmemory
-  secrets-provider-aws-sm
-  secrets-provider-azure-kv
-  secrets-provider-gcp-sm
-  secrets-provider-k8s
-  secrets-provider-vault-kv
+  "components/secrets-audit-exporter|secrets-audit-exporter|greentic.secrets.audit_exporter|greentic.secrets.audit_exporter"
+  "components/secrets-provider-inmemory|secrets-provider-inmemory|greentic.secrets.provider.inmemory|greentic.secrets.provider.inmemory"
+  "components/secrets-provider-aws-sm|secrets-provider-aws-sm|greentic.secrets.provider.aws_sm|greentic.secrets.provider.aws_sm"
+  "components/secrets-provider-azure-kv|secrets-provider-azure-kv|greentic.secrets.provider.azure_kv|greentic.secrets.provider.azure_kv"
+  "components/secrets-provider-gcp-sm|secrets-provider-gcp-sm|greentic.secrets.provider.gcp_sm|greentic.secrets.provider.gcp_sm"
+  "components/secrets-provider-k8s|secrets-provider-k8s|greentic.secrets.provider.k8s|greentic.secrets.provider.k8s"
+  "components/secrets-provider-vault-kv|secrets-provider-vault-kv|greentic.secrets.provider.vault_kv|greentic.secrets.provider.vault_kv"
 )
+
+component_selected() {
+  local package_name="$1"
+  local component_id="$2"
+  local registry_name="$3"
+  local item
+
+  if [[ -z "${COMPONENT_FILTER_RAW}" ]]; then
+    return 0
+  fi
+
+  IFS=',' read -ra requested <<< "${COMPONENT_FILTER_RAW}"
+  for item in "${requested[@]}"; do
+    item="$(printf '%s' "${item}" | xargs)"
+    if [[ -z "${item}" ]]; then
+      continue
+    fi
+    if [[ "${item}" == "${package_name}" || "${item}" == "${component_id}" || "${item}" == "${registry_name}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 echo "Building wasm components for version ${VERSION}"
 
@@ -37,33 +62,39 @@ registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 REGISTRY_NAMESPACE="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 echo "Publishing namespace: ${REGISTRY_NAMESPACE}"
+if [[ -n "${COMPONENT_FILTER_RAW}" ]]; then
+  echo "Component filter: ${COMPONENT_FILTER_RAW}"
+fi
 
 digests_json="${OUT_DIR}/digests.json"
 echo "[]" > "${digests_json}"
 
 for comp in "${components[@]}"; do
-  crate_path="components/${comp}"
-  if [[ ! -d "${crate_path}" ]]; then
-    echo "Skipping ${comp}, path ${crate_path} not found" >&2
+  IFS='|' read -r crate_path package_name component_id registry_name <<< "${comp}"
+  if ! component_selected "${package_name}" "${component_id}" "${registry_name}"; then
     continue
   fi
-  echo ">> Building ${comp}"
-  cargo build -p "${comp}" --release --target wasm32-wasip2
-  artifact="${comp//-/_}.wasm"
+  if [[ ! -d "${crate_path}" ]]; then
+    echo "Skipping ${package_name}, path ${crate_path} not found" >&2
+    continue
+  fi
+  echo ">> Building ${package_name}"
+  cargo build -p "${package_name}" --release --target wasm32-wasip2
+  artifact="${package_name//-/_}.wasm"
   wasm_path="${ROOT_DIR}/target/wasm32-wasip2/release/${artifact}"
   if [[ ! -f "${wasm_path}" ]]; then
     echo "  [ERROR] wasm artifact missing at ${wasm_path}" >&2
     exit 1
   fi
-  cp "${wasm_path}" "${OUT_DIR}/${comp}.wasm"
-  digest="$(sha256sum "${wasm_path}" | awk '{print $1}')"
-  ref="${REGISTRY_NAMESPACE}/${comp}:${VERSION}"
+  cp "${wasm_path}" "${OUT_DIR}/${package_name}.wasm"
+  content_digest="$(sha256sum "${wasm_path}" | awk '{print $1}')"
+  ref="${REGISTRY_NAMESPACE}/${registry_name}:${VERSION}"
   tmp="$(mktemp)"
-  jq --arg id "${comp}" --arg version "${VERSION}" --arg ref "${ref}" --arg digest "${digest}" --arg path "${comp}.wasm" \
-    '. += [{"id":$id,"version":$version,"ref":$ref,"digest":$digest,"path":$path}]' \
+  jq --arg id "${component_id}" --arg version "${VERSION}" --arg ref "${ref}" --arg digest "${content_digest}" --arg path "${package_name}.wasm" \
+    '. += [{"id":$id,"version":$version,"ref":$ref,"content_digest":$digest,"path":$path}]' \
     "${digests_json}" > "${tmp}"
   mv "${tmp}" "${digests_json}"
-  echo "  built ${comp}.wasm digest ${digest}"
+  echo "  built ${package_name}.wasm as ${component_id} content digest ${content_digest}"
 done
 
 echo "::notice::Component digests written to ${digests_json}"

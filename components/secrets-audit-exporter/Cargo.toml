@@ -1,0 +1,15 @@
+[package]
+name = "secrets-audit-exporter"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+once_cell = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+greentic-interfaces = { workspace = true, default-features = false, features = ["bindings-rust", "provider-core-v1"] }
+wit-bindgen = { workspace = true }

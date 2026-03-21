@@ -1,0 +1,11 @@
+{
+  "wizard_id": "greentic-component.wizard.run",
+  "schema_id": "greentic-component.wizard.run",
+  "schema_version": "1.0.0",
+  "locale": "en",
+  "answers": {
+    "fields": {},
+    "mode": "create"
+  },
+  "locks": {}
+}

@@ -11,6 +11,8 @@ PACK_OFFLINE="${PACK_OFFLINE:-1}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
+PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -34,6 +36,7 @@ built_gtpacks=()
 
 echo "Building provider packs for version ${VERSION}"
 echo "Components registry namespace: ${components_registry}"
+echo "Shared component policy: ${PREBUILD_COMPONENTS}"
 if [[ "${PACK_OFFLINE}" == "1" ]]; then
   PACK_MODE_ARGS=(--offline)
   echo "Pack mode: offline"
@@ -44,6 +47,45 @@ fi
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
+fi
+
+if [[ "${PREBUILD_COMPONENTS}" == "1" || "${PREBUILD_COMPONENTS}" == "true" || "${PREBUILD_COMPONENTS}" == "yes" || "${PREBUILD_COMPONENTS}" == "auto" ]]; then
+  need_prebuild=0
+  if [[ "${PREBUILD_COMPONENTS}" != "auto" || ! -f "${DIGESTS_JSON}" ]]; then
+    need_prebuild=1
+  elif ! python3 - "${DIGESTS_JSON}" "${SHARED_COMPONENT_FILTER}" <<'PY'
+import json, sys
+path, raw = sys.argv[1], sys.argv[2]
+requested = {item.strip() for item in raw.split(",") if item.strip()}
+if not requested:
+    raise SystemExit(0)
+entries = json.load(open(path))
+present = set()
+for entry in entries:
+    present.add(entry.get("id"))
+    ref = entry.get("ref", "")
+    if ref:
+        present.add(ref.rsplit("/", 1)[-1].split(":", 1)[0])
+    component_path = entry.get("path", "")
+    if component_path.endswith(".wasm"):
+        present.add(component_path[:-5])
+missing = requested - present
+raise SystemExit(1 if missing else 0)
+PY
+  then
+    need_prebuild=1
+  fi
+
+  if [[ "${need_prebuild}" == "1" ]]; then
+    echo "Prebuilding shared components: ${SHARED_COMPONENT_FILTER}"
+    COMPONENT_FILTER="${SHARED_COMPONENT_FILTER}" "${ROOT_DIR}/scripts/build-components.sh"
+    if [[ "${PACK_OFFLINE}" == "1" ]]; then
+      echo "Note: offline pack builds still require those component OCI refs to be published or already cached."
+      echo "      Prebuilding refreshes local wasm digests, but does not populate greentic-pack's OCI cache."
+    fi
+  else
+    echo "Shared component digests already present for: ${SHARED_COMPONENT_FILTER}"
+  fi
 fi
 
 rm -rf "$OUT_DIR"
@@ -90,10 +132,13 @@ for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
     if d:
-        digest = str(d.get("digest", "")).strip()
-        if digest.startswith("sha256:"):
-            digest = digest[len("sha256:"):]
-        comp["uri"] = f"{d['ref']}@sha256:{digest}"
+        oci_digest = str(d.get("oci_digest", "")).strip()
+        if oci_digest:
+            if not oci_digest.startswith("sha256:"):
+                oci_digest = f"sha256:{oci_digest}"
+            comp["uri"] = f"{d['ref']}@{oci_digest}"
+        else:
+            comp["uri"] = d["ref"]
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"
