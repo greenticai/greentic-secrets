@@ -1,6 +1,10 @@
 name: CI
 on:
+  workflow_call:
   workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
 permissions:
   contents: read
   packages: read
