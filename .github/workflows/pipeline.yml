@@ -2,7 +2,7 @@ name: CI + Publish Pipeline
 
 on:
   push:
-    branches: [ master ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -158,7 +158,7 @@ jobs:
 
   publish-crates:
     needs: [lint, test]
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -178,7 +178,7 @@ jobs:
 
   publish-components:
     needs: [lint, test]
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -215,7 +215,7 @@ jobs:
 
   build-and-push-packs:
     needs: [lint, test, publish-components]
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -286,7 +286,7 @@ jobs:
 
   build-and-push-validators:
     needs: [lint, test]
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
