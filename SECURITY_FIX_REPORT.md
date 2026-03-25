@@ -1,23 +1,28 @@
 # Security Fix Report
 
-## Inputs Reviewed
-- Security alerts JSON: `{"dependabot": [], "code_scanning": []}`
-- Dependabot alerts file: `dependabot-alerts.json` (`[]`)
-- Code scanning alerts file: `code-scanning-alerts.json` (`[]`)
-- PR dependency vulnerability file: `pr-vulnerable-changes.json` (`[]`)
+Date (UTC): 2026-03-25
+Branch: `ci/add-workflow-permissions`
 
-## Analysis Performed
-1. Verified all provided security alert artifacts are empty.
-2. Checked repository dependency manifests (Rust `Cargo.toml` files and root `Cargo.lock`) for the stack in scope.
-3. Reviewed PR vulnerability input file for newly introduced dependency issues.
+## Inputs Reviewed
+- Dependabot alerts: `[]`
+- Code scanning alerts: `[]`
+- New PR dependency vulnerabilities: `[]`
+
+## Repository Checks Performed
+1. Enumerated dependency manifests/lockfiles in the repository (Rust workspace with `Cargo.toml` files and `Cargo.lock`).
+2. Compared PR branch to `origin/main` for dependency-file changes:
+   - Checked `Cargo.lock`, `Cargo.toml`, and `**/Cargo.toml` in branch diff.
+   - Result: no dependency file changes detected in this PR.
 
 ## Findings
-- No active Dependabot vulnerabilities.
-- No active code scanning vulnerabilities.
-- No newly introduced PR dependency vulnerabilities.
+- No active security alerts were provided.
+- No new dependency vulnerabilities were provided for this PR.
+- No dependency updates in PR scope that could introduce new vulnerabilities.
 
 ## Remediation Actions
-- No code or dependency changes were required because there were no vulnerabilities to remediate.
+- No code or dependency changes were required.
+- No security fix patch was applied because there were no actionable vulnerabilities in scope.
 
-## Files Modified
-- `SECURITY_FIX_REPORT.md` (created)
+## Residual Risk
+- This review is scoped to the supplied alerts and PR dependency-file diff.
+- If additional runtime or infrastructure scanning is desired, run CI-integrated SAST/DAST and dependency auditing with an up-to-date advisory database.
