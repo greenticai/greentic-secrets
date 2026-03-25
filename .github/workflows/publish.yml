@@ -3,6 +3,9 @@ name: Publish crates (single or workspace)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
