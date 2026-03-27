@@ -1,7 +1,7 @@
 # Security Fix Report
 
-Date (UTC): 2026-03-25
-Branch: `ci/add-workflow-permissions`
+Date (UTC): 2026-03-27
+Branch: `chore/shared-codex-security-fix`
 
 ## Inputs Reviewed
 - Dependabot alerts: `[]`
@@ -9,20 +9,24 @@ Branch: `ci/add-workflow-permissions`
 - New PR dependency vulnerabilities: `[]`
 
 ## Repository Checks Performed
-1. Enumerated dependency manifests/lockfiles in the repository (Rust workspace with `Cargo.toml` files and `Cargo.lock`).
-2. Compared PR branch to `origin/main` for dependency-file changes:
-   - Checked `Cargo.lock`, `Cargo.toml`, and `**/Cargo.toml` in branch diff.
-   - Result: no dependency file changes detected in this PR.
+1. Reviewed repository security input files:
+   - `security-alerts.json`
+   - `pr-vulnerable-changes.json`
+2. Checked dependency manifests/lockfiles for changes in current PR workspace diff:
+   - `Cargo.toml`, `**/Cargo.toml`, `Cargo.lock`
+   - Common JS/Python lock/manifests (`package.json`, lockfiles, `pyproject.toml`, `poetry.lock`, `requirements*.txt`)
+   - Result: no dependency file changes detected.
 
 ## Findings
-- No active security alerts were provided.
-- No new dependency vulnerabilities were provided for this PR.
-- No dependency updates in PR scope that could introduce new vulnerabilities.
+- No Dependabot alerts in scope.
+- No code scanning alerts in scope.
+- No new PR dependency vulnerabilities reported.
+- No newly introduced dependency risk detected from changed dependency files.
 
 ## Remediation Actions
-- No code or dependency changes were required.
-- No security fix patch was applied because there were no actionable vulnerabilities in scope.
+- No security patch was required.
+- No code or dependency modifications were applied.
 
 ## Residual Risk
-- This review is scoped to the supplied alerts and PR dependency-file diff.
-- If additional runtime or infrastructure scanning is desired, run CI-integrated SAST/DAST and dependency auditing with an up-to-date advisory database.
+- Assessment is limited to provided alert payloads and detectable dependency-file changes in this workspace.
+- If deeper assurance is needed, run full dependency audit tooling against the latest advisory databases in CI.
