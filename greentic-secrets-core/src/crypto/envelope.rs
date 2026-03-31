@@ -312,6 +312,7 @@ fn open_aead(_key_bytes: &[u8], b64: &str) -> Result<Vec<u8>> {
         .map_err(|_| Error::Invalid("ciphertext".into(), "b64".into()))
 }
 
+/// Derives a 256-bit subkey from the DEK using HKDF-SHA256 with the given salt and context info.
 fn derive_key(dek: &[u8], salt: &[u8], info: &[u8]) -> Result<[u8; 32]> {
     let hkdf = Hkdf::<Sha256>::new(Some(salt), dek);
     let mut okm = [0u8; 32];
