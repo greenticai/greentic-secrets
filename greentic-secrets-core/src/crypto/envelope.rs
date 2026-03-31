@@ -1,3 +1,4 @@
+// TODO: address CodeQL alerts #32, #33 (hard-coded-cryptographic-value false positives)
 use crate::crypto::dek_cache::{CacheKey, DekCache, DekMaterial};
 use crate::key_provider::KeyProvider;
 use crate::spec_compat::{
