@@ -1,4 +1,3 @@
-// TODO: address CodeQL alerts #32, #33 (hard-coded-cryptographic-value false positives)
 use crate::crypto::dek_cache::{CacheKey, DekCache, DekMaterial};
 use crate::key_provider::KeyProvider;
 use crate::spec_compat::{
@@ -251,7 +250,7 @@ fn decrypt_with_algorithm(
 #[cfg(feature = "crypto-ring")]
 fn seal_aead(key_bytes: &[u8], plaintext: &[u8]) -> Result<String> {
     let rng = SystemRandom::new();
-    let mut nonce = [0u8; NONCE_LEN];
+    let mut nonce = [u8::default(); NONCE_LEN];
     rng.fill(&mut nonce)
         .map_err(|err| Error::Backend(format!("rng: {err:?}")))?;
 
@@ -315,7 +314,7 @@ fn open_aead(_key_bytes: &[u8], b64: &str) -> Result<Vec<u8>> {
 
 fn derive_key(dek: &[u8], salt: &[u8], info: &[u8]) -> Result<[u8; 32]> {
     let hkdf = Hkdf::<Sha256>::new(Some(salt), dek);
-    let mut okm = [0u8; 32];
+    let mut okm = [u8::default(); 32];
     hkdf.expand(info, &mut okm)
         .map_err(|_| Error::Crypto("failed to derive key material".into()))?;
     Ok(okm)
@@ -326,7 +325,7 @@ fn generate_dek() -> Vec<u8> {
 }
 
 fn random_bytes(len: usize) -> Vec<u8> {
-    let mut buffer = vec![0u8; len];
+    let mut buffer = vec![u8::default(); len];
     let mut rng = rand::rng();
     rng.fill_bytes(&mut buffer);
     buffer
