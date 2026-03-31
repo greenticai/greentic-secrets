@@ -326,10 +326,8 @@ fn generate_dek() -> Vec<u8> {
 }
 
 fn random_bytes(len: usize) -> Vec<u8> {
-    let mut buffer = vec![0u8; len];
     let mut rng = rand::rng();
-    rng.fill_bytes(&mut buffer);
-    buffer
+    (0..len).map(|_| rng.random::<u8>()).collect()
 }
 
 #[cfg(test)]
