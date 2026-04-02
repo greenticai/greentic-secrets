@@ -1,10 +1,7 @@
 # SECURITY_FIX_REPORT
 
-Date (UTC): 2026-04-02
-Repository: `/home/runner/work/greentic-secrets/greentic-secrets`
-
-## Alert Analysis
-Provided alerts payload:
+## Scope
+Input security alerts for this CI run:
 
 ```json
 {
@@ -13,21 +10,18 @@ Provided alerts payload:
 }
 ```
 
-Verified local alert artifacts:
-- `security-alerts.json`: empty `dependabot` and `code_scanning` arrays
-- `dependabot-alerts.json`: `[]`
-- `code-scanning-alerts.json`: `[]`
-
-Counts:
-- Dependabot alerts: `0`
-- Code scanning alerts: `0`
-- Total actionable alerts: `0`
+## Analysis
+- Dependabot alerts reviewed: `0`
+- Code scanning alerts reviewed: `0`
+- Actionable vulnerabilities in provided scope: `0`
 
 ## Remediation Actions
-No vulnerabilities were identified from the provided alert set, so no code or dependency changes were required.
+- No code changes were required because there were no in-scope alerts to remediate.
+- No dependency updates were required.
 
-## Files Modified
-- `SECURITY_FIX_REPORT.md`
+## Validation
+- Confirmed `security-alerts.json` contains empty `dependabot` and `code_scanning` arrays.
+- Confirmed `dependabot-alerts.json` and `code-scanning-alerts.json` are empty arrays.
 
-## Outcome
-Security review completed successfully with no findings to remediate.
+## Notes
+- Repository artifact `all-code-scanning-alerts.json` contains historical/open alerts for paths not present in this workspace snapshot (for example, `greentic-secrets-core/...`). These were not included in the provided CI input payload and were not modified in this run.
