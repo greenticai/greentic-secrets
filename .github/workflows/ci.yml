@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
   packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   semver-checks:
     runs-on: ubuntu-latest

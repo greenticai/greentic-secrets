@@ -1,1 +1,17 @@
+.github/workflows/auto-tag.yml
+.github/workflows/binstall-release.yml
+.github/workflows/check-package.yml
+.github/workflows/ci-live.yml
+.github/workflows/ci.yml
+.github/workflows/codeql.yml
+.github/workflows/codex-security-fix.yml
+.github/workflows/codex-semver-fix.yml
+.github/workflows/coverage.yml
 .github/workflows/dependency-review.yml
+.github/workflows/infra-validate.yml
+.github/workflows/pipeline.yml
+.github/workflows/provider-packs.yml
+.github/workflows/publish-components.yml
+.github/workflows/publish.yml
+.github/workflows/secrets-providers.yml
+.github/workflows/validators.yml
