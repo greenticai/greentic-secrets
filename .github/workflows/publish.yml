@@ -1,6 +1,9 @@
 name: Publish crates (single or workspace)
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
