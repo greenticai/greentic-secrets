@@ -140,19 +140,17 @@ for slug in "${providers[@]}"; do
     done < <(python3 -c "import json,sys; [print(e['path']) for e in json.load(open(sys.argv[1]))]" "${DIGESTS_JSON}" 2>/dev/null || true)
   fi
 
+  # Rewrite component URIs and detect unresolvable external components.
+  has_external_unresolved=0
   if [[ -f "${DIGESTS_JSON}" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
-    python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" > "${tmp}" <<'PY'
-import json, sys, os, yaml, hashlib
+    has_external_unresolved=$(python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" <<'PY'
+import json, sys, os, yaml
 digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
 manifest = yaml.safe_load(open(sys.argv[2]))
 use_local = sys.argv[3] == "1"
 components_dir = sys.argv[4]
-
-# Minimal valid WASM module (magic + version header only).
-STUB_WASM = b"\x00asm\x01\x00\x00\x00"
-stub_dir = os.path.join(components_dir, "_stubs")
-
+has_unresolved = False
 for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
@@ -169,38 +167,42 @@ for comp in manifest.get("components", []):
             else:
                 comp["uri"] = d["ref"]
     elif use_local:
-        # External component not in digests — create a stub WASM for
-        # dry-run validation so greentic-pack resolve can proceed
-        # without OCI access.
-        os.makedirs(stub_dir, exist_ok=True)
-        safe_id = did.replace(".", "-").replace("/", "-")
-        stub_path = os.path.join(stub_dir, f"{safe_id}.wasm")
-        if not os.path.exists(stub_path):
-            with open(stub_path, "wb") as f:
-                f.write(STUB_WASM)
-        comp["uri"] = f"file://{os.path.abspath(stub_path)}"
-yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
+        has_unresolved = True
+        print(f"  external component not available locally: {did}", file=sys.stderr)
+# Write rewritten manifest to stdout, then print flag to a separate fd
+with open(sys.argv[2] + ".tmp", "w") as f:
+    yaml.safe_dump(manifest, f, sort_keys=False)
+print("1" if has_unresolved else "0")
 PY
-    mv "${tmp}" "${staging}/gtpack.yaml"
+    )
+    if [[ -f "${staging}/gtpack.yaml.tmp" ]]; then
+      mv "${staging}/gtpack.yaml.tmp" "${staging}/gtpack.yaml"
+    fi
   fi
 
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
-  LOCK_FILE="${staging}/pack.lock.json"
-  greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-  greentic-pack build \
-    --in "${staging}" \
-    --lock "${LOCK_FILE}" \
-    --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --bundle none \
-    "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
-  greentic-pack doctor \
-    --validate \
-    --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --validator-pack "${VALIDATOR_PACK}" \
-    "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
+  if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
+    echo "::warning::Skipping resolve/build/doctor for secrets-${slug}: external components not available locally (dry-run only)"
+    # Create an empty placeholder so downstream steps don't fail on missing file
+    touch "${OUT_DIR}/secrets-${slug}.gtpack"
+  else
+    LOCK_FILE="${staging}/pack.lock.json"
+    greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
+    greentic-pack build \
+      --in "${staging}" \
+      --lock "${LOCK_FILE}" \
+      --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
+      --bundle none \
+      "${PACK_MODE_ARGS[@]}" \
+      --allow-oci-tags
+    greentic-pack doctor \
+      --validate \
+      --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
+      --validator-pack "${VALIDATOR_PACK}" \
+      "${PACK_MODE_ARGS[@]}" \
+      --allow-oci-tags
+  fi
 
   echo "::notice::built pack secrets-${slug}.gtpack"
   built_gtpacks+=("${OUT_DIR}/secrets-${slug}.gtpack")
