@@ -19,9 +19,9 @@ resource "google_iam_workload_identity_pool_provider" "provider" {
   display_name                       = "GitHub Provider"
   description                        = "GitHub OIDC provider for CI"
   attribute_mapping = {
-    "google.subject"          = "assertion.sub"
-    "attribute.repository"    = "assertion.repository"
-    "attribute.ref"           = "assertion.ref"
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
   }
   attribute_condition = "assertion.repository == \"${local.repo_slug}\" && assertion.ref == \"${var.github_ref_pattern}\""
   oidc {

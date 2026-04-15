@@ -21,7 +21,7 @@ jobs:
       - name: Package all publishable crates (dry-run)
         run: |
           failures=0
-          for PKG in $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.publish != ["false"]) | .name'); do
+          for PKG in $(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.publish != ["false"]) | .name'); do
             echo "::group::Packaging $PKG"
             if ! cargo package -p "$PKG" --allow-dirty; then
               failures=1

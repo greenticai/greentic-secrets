@@ -45,7 +45,10 @@ jobs:
 
   azure:
     needs: [aws]
-    if: always()
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'live-cloud-tests')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -73,7 +76,10 @@ jobs:
 
   gcp:
     needs: [aws]
-    if: always()
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'live-cloud-tests')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
       id-token: write

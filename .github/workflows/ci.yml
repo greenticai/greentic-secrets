@@ -88,23 +88,19 @@ jobs:
         uses: oras-project/setup-oras@v1
       - name: Login to GHCR
         env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || github.token }}
         run: |
-          if [[ -z "${GHCR_TOKEN:-}" ]]; then
-            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
-            exit 1
-          fi
-          user="${GHCR_USER:-${GITHUB_ACTOR}}"
+          user="${GHCR_USER}"
           echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
       - name: Build provider packs
         env:
           COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || github.token }}
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN || github.token }}
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh
