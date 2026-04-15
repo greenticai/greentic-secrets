@@ -89,18 +89,19 @@ jobs:
       - name: Login to GHCR
         env:
           GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || github.token }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
-          user="${GHCR_USER}"
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
+          if [[ -n "${GHCR_TOKEN:-}" ]]; then
+            user="${GHCR_USER}"
+            echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
+          else
+            echo "::notice::GHCR_TOKEN not set, pack build will use locally-built components"
+          fi
       - name: Build provider packs
         env:
           COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || github.token }}
-          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN || github.token }}
+          PACK_USE_LOCAL_COMPONENTS: auto
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh

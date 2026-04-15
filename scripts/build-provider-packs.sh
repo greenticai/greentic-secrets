@@ -8,6 +8,7 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
+PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-auto}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
@@ -122,23 +123,46 @@ for slug in "${providers[@]}"; do
   rm -f "${staging}/gtpack.yaml.bak"
 
   # If digests are available, rewrite component URIs to pin them.
+  # When PACK_USE_LOCAL_COMPONENTS is enabled and locally-built WASMs exist,
+  # use file:// URIs so greentic-pack resolves from disk (no OCI pull needed).
+  # This avoids "Not authorized" errors when OCI credentials are unavailable.
+  use_local="0"
+  if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" || "${PACK_USE_LOCAL_COMPONENTS}" == "true" ]]; then
+    use_local="1"
+  elif [[ "${PACK_USE_LOCAL_COMPONENTS}" == "auto" && -f "${DIGESTS_JSON}" ]]; then
+    # Auto-detect: use local files when digests exist and all referenced WASMs are present
+    use_local="1"
+    while IFS= read -r wasm_path; do
+      if [[ ! -f "${OUT_DIR}/../components/${wasm_path}" && ! -f "${ROOT_DIR}/target/components/${wasm_path}" ]]; then
+        use_local="0"
+        break
+      fi
+    done < <(python3 -c "import json,sys; [print(e['path']) for e in json.load(open(sys.argv[1]))]" "${DIGESTS_JSON}" 2>/dev/null || true)
+  fi
+
   if [[ -f "${DIGESTS_JSON}" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
-    python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" > "${tmp}" <<'PY'
-import json, sys, yaml
+    python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" > "${tmp}" <<'PY'
+import json, sys, os, yaml
 digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
 manifest = yaml.safe_load(open(sys.argv[2]))
+use_local = sys.argv[3] == "1"
+components_dir = sys.argv[4]
 for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
     if d:
-        oci_digest = str(d.get("oci_digest", "")).strip()
-        if oci_digest:
-            if not oci_digest.startswith("sha256:"):
-                oci_digest = f"sha256:{oci_digest}"
-            comp["uri"] = f"{d['ref']}@{oci_digest}"
+        wasm_path = os.path.join(components_dir, d.get("path", ""))
+        if use_local and os.path.isfile(wasm_path):
+            comp["uri"] = f"file://{os.path.abspath(wasm_path)}"
         else:
-            comp["uri"] = d["ref"]
+            oci_digest = str(d.get("oci_digest", "")).strip()
+            if oci_digest:
+                if not oci_digest.startswith("sha256:"):
+                    oci_digest = f"sha256:{oci_digest}"
+                comp["uri"] = f"{d['ref']}@{oci_digest}"
+            else:
+                comp["uri"] = d["ref"]
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"
