@@ -143,11 +143,16 @@ for slug in "${providers[@]}"; do
   if [[ -f "${DIGESTS_JSON}" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
     python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" > "${tmp}" <<'PY'
-import json, sys, os, yaml
+import json, sys, os, yaml, hashlib
 digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
 manifest = yaml.safe_load(open(sys.argv[2]))
 use_local = sys.argv[3] == "1"
 components_dir = sys.argv[4]
+
+# Minimal valid WASM module (magic + version header only).
+STUB_WASM = b"\x00asm\x01\x00\x00\x00"
+stub_dir = os.path.join(components_dir, "_stubs")
+
 for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
@@ -163,6 +168,17 @@ for comp in manifest.get("components", []):
                 comp["uri"] = f"{d['ref']}@{oci_digest}"
             else:
                 comp["uri"] = d["ref"]
+    elif use_local:
+        # External component not in digests — create a stub WASM for
+        # dry-run validation so greentic-pack resolve can proceed
+        # without OCI access.
+        os.makedirs(stub_dir, exist_ok=True)
+        safe_id = did.replace(".", "-").replace("/", "-")
+        stub_path = os.path.join(stub_dir, f"{safe_id}.wasm")
+        if not os.path.exists(stub_path):
+            with open(stub_path, "wb") as f:
+                f.write(STUB_WASM)
+        comp["uri"] = f"file://{os.path.abspath(stub_path)}"
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"
