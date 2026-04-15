@@ -83,7 +83,7 @@ jobs:
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
-          cargo install greentic-provision --version 0.4.16
+          cargo install --locked --git https://github.com/greenticai/greentic-provision.git --rev 44f8696 greentic-provision
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
       - name: Login to GHCR
@@ -110,3 +110,11 @@ jobs:
         run: ./scripts/validate-provision-fixtures.sh
       - name: Run secrets pack conformance (dry-run)
         run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
+      - name: Run pack_validation integration tests
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          RUST_BACKTRACE=1 cargo test -p greentic-secrets-runner --test pack_validation -- --ignored --nocapture

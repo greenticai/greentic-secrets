@@ -120,6 +120,7 @@ fn provider_packs_have_provider_core_extension_and_schemas() {
 }
 
 #[test]
+#[ignore = "integration test; requires greentic-pack in PATH (run with --ignored in secrets-pack-dry-run job)"]
 fn built_provider_gtpacks_embed_canonical_provider_extension() {
     let packs = packs_root();
     let repo_root = packs
@@ -267,6 +268,7 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
 }
 
 #[test]
+#[ignore = "integration test; requires greentic-pack in PATH (run with --ignored in secrets-pack-dry-run job)"]
 fn minimal_fixture_pack_validates() {
     let packs = packs_root();
     let repo_root = packs
