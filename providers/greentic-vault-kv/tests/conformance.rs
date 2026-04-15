@@ -76,10 +76,14 @@ impl ProviderUnderTest for VaultClient {
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         let scope = Scope::new("int", "vault", None).unwrap();
         let items = self.backend.list(&scope, Some("conformance"), None)?;
+        let safe_prefix: String = prefix
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
         Ok(items
             .into_iter()
             .map(|item| item.uri.to_string())
-            .filter(|uri| uri.contains(prefix))
+            .filter(|uri| uri.contains(&safe_prefix))
             .collect())
     }
 }
