@@ -244,7 +244,7 @@ impl SecretsBackend for K8sSecretsBackend {
 
         for snapshot in versions.into_iter().rev() {
             if snapshot.deleted {
-                continue;
+                return Ok(None);
             }
             return snapshot.into_versioned();
         }
