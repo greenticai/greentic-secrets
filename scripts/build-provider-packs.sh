@@ -13,7 +13,7 @@ registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
-SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter,greentic.secrets.generators,greentic.secrets.policy_validator}"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter,greentic.secrets.generators,greentic.secrets.policy_validator,greentic.secrets.provider.aws_sm,greentic.secrets.provider.azure_kv,greentic.secrets.provider.gcp_sm,greentic.secrets.provider.k8s,greentic.secrets.provider.vault_kv}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -184,25 +184,24 @@ PY
 
   if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
     echo "::warning::Skipping resolve/build/doctor for secrets-${slug}: external components not available locally (dry-run only)"
-    # Create an empty placeholder so downstream steps don't fail on missing file
-    touch "${OUT_DIR}/secrets-${slug}.gtpack"
-  else
-    LOCK_FILE="${staging}/pack.lock.json"
-    greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-    greentic-pack build \
-      --in "${staging}" \
-      --lock "${LOCK_FILE}" \
-      --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
-      --bundle none \
-      "${PACK_MODE_ARGS[@]}" \
-      --allow-oci-tags
-    greentic-pack doctor \
-      --validate \
-      --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
-      --validator-pack "${VALIDATOR_PACK}" \
-      "${PACK_MODE_ARGS[@]}" \
-      --allow-oci-tags
+    continue
   fi
+
+  LOCK_FILE="${staging}/pack.lock.json"
+  greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
+  greentic-pack build \
+    --in "${staging}" \
+    --lock "${LOCK_FILE}" \
+    --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
+    --bundle none \
+    "${PACK_MODE_ARGS[@]}" \
+    --allow-oci-tags
+  greentic-pack doctor \
+    --validate \
+    --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
+    --validator-pack "${VALIDATOR_PACK}" \
+    "${PACK_MODE_ARGS[@]}" \
+    --allow-oci-tags
 
   echo "::notice::built pack secrets-${slug}.gtpack"
   built_gtpacks+=("${OUT_DIR}/secrets-${slug}.gtpack")
@@ -220,6 +219,12 @@ if [[ "${#built_gtpacks[@]}" -gt 0 ]]; then
 fi
 
 echo "${VERSION}" > "${OUT_DIR}/VERSION"
+
+if [[ ! -s "${bundle_deps}" ]]; then
+  echo "::warning::No provider packs were built — skipping bundle pack"
+  rm -f "${bundle_deps}"
+  exit 0
+fi
 
 # Build bundle pack with packc.
 cat >"${bundle_staging}/pack.yaml" <<EOF
