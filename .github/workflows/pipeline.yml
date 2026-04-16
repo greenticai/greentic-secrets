@@ -135,6 +135,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          targets: wasm32-wasip2
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
         with:

@@ -80,6 +80,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          targets: wasm32-wasip2
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack

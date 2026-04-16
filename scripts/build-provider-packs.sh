@@ -13,7 +13,7 @@ registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
-SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter}"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter,greentic.secrets.generators,greentic.secrets.policy_validator}"
 
 VERSION="$(python3 - <<'PY'
 import re

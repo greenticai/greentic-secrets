@@ -5891,6 +5891,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrets-generators"
+version = "0.1.0"
+dependencies = [
+ "greentic-interfaces",
+ "serde_json",
+ "wit-bindgen 0.54.0",
+]
+
+[[package]]
+name = "secrets-policy-validator"
+version = "0.1.0"
+dependencies = [
+ "greentic-interfaces",
+ "serde_json",
+ "wit-bindgen 0.54.0",
+]
+
+[[package]]
 name = "secrets-provider-aws-sm"
 version = "0.1.0"
 dependencies = [
