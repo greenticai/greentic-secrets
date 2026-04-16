@@ -253,8 +253,8 @@ jobs:
           chmod +x "$HOME/.cargo/bin/greentic-pack" "$HOME/.cargo/bin/greentic-provision"
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y zip yq
-      - name: Pack unit validation (provider-core extension + schemas + pack.lock)
-        run: cargo test -p greentic-secrets-runner pack_validation
+      - name: Pack source validation (provider-core extension + schemas)
+        run: cargo test -p greentic-secrets-runner pack_validation -- --skip built_provider_gtpacks
       - name: Validate packs
         run: ./scripts/validate-packs.sh
       - name: Set up ORAS
@@ -280,6 +280,14 @@ jobs:
           GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
         run: ./scripts/build-provider-packs.sh
+      - name: Pack artifact validation (built .gtpack files)
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          PACK_OFFLINE: "0"
+          PACK_USE_LOCAL_COMPONENTS: "0"
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: cargo test -p greentic-secrets-runner built_provider_gtpacks
       - name: Write bundle descriptor for store compatibility
         run: |
           VERSION=$(cat dist/packs/VERSION)
