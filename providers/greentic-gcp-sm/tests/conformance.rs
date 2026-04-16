@@ -77,7 +77,7 @@ impl ProviderUnderTest for GcpClient {
     }
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "integration test; requires GREENTIC_INTEGRATION=1"]
 async fn conformance_gcp() -> Result<()> {
     if std::env::var("GREENTIC_INTEGRATION").unwrap_or_default() != "1" {

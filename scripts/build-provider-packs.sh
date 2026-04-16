@@ -8,11 +8,13 @@ OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
+PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-auto}"
+SKIP_DOCTOR="${SKIP_DOCTOR:-0}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
-SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter}"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter,greentic.secrets.generators,greentic.secrets.policy_validator,greentic.secrets.provider.aws_sm,greentic.secrets.provider.azure_kv,greentic.secrets.provider.gcp_sm,greentic.secrets.provider.k8s,greentic.secrets.provider.vault_kv}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -122,29 +124,69 @@ for slug in "${providers[@]}"; do
   rm -f "${staging}/gtpack.yaml.bak"
 
   # If digests are available, rewrite component URIs to pin them.
+  # When PACK_USE_LOCAL_COMPONENTS is enabled and locally-built WASMs exist,
+  # use file:// URIs so greentic-pack resolves from disk (no OCI pull needed).
+  # This avoids "Not authorized" errors when OCI credentials are unavailable.
+  use_local="0"
+  if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" || "${PACK_USE_LOCAL_COMPONENTS}" == "true" ]]; then
+    use_local="1"
+  elif [[ "${PACK_USE_LOCAL_COMPONENTS}" == "auto" && -f "${DIGESTS_JSON}" ]]; then
+    # Auto-detect: use local files when digests exist and all referenced WASMs are present
+    use_local="1"
+    while IFS= read -r wasm_path; do
+      if [[ ! -f "${OUT_DIR}/../components/${wasm_path}" && ! -f "${ROOT_DIR}/target/components/${wasm_path}" ]]; then
+        use_local="0"
+        break
+      fi
+    done < <(python3 -c "import json,sys; [print(e['path']) for e in json.load(open(sys.argv[1]))]" "${DIGESTS_JSON}" 2>/dev/null || true)
+  fi
+
+  # Rewrite component URIs and detect unresolvable external components.
+  has_external_unresolved=0
   if [[ -f "${DIGESTS_JSON}" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
-    python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" > "${tmp}" <<'PY'
-import json, sys, yaml
+    has_external_unresolved=$(python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" <<'PY'
+import json, sys, os, yaml
 digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
 manifest = yaml.safe_load(open(sys.argv[2]))
+use_local = sys.argv[3] == "1"
+components_dir = sys.argv[4]
+has_unresolved = False
 for comp in manifest.get("components", []):
     did = comp.get("id")
     d = digests.get(did)
     if d:
-        oci_digest = str(d.get("oci_digest", "")).strip()
-        if oci_digest:
-            if not oci_digest.startswith("sha256:"):
-                oci_digest = f"sha256:{oci_digest}"
-            comp["uri"] = f"{d['ref']}@{oci_digest}"
+        wasm_path = os.path.join(components_dir, d.get("path", ""))
+        if use_local and os.path.isfile(wasm_path):
+            comp["uri"] = f"file://{os.path.abspath(wasm_path)}"
         else:
-            comp["uri"] = d["ref"]
-yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
+            oci_digest = str(d.get("oci_digest", "")).strip()
+            if oci_digest:
+                if not oci_digest.startswith("sha256:"):
+                    oci_digest = f"sha256:{oci_digest}"
+                comp["uri"] = f"{d['ref']}@{oci_digest}"
+            else:
+                comp["uri"] = d["ref"]
+    elif use_local:
+        has_unresolved = True
+        print(f"  external component not available locally: {did}", file=sys.stderr)
+# Write rewritten manifest to stdout, then print flag to a separate fd
+with open(sys.argv[2] + ".tmp", "w") as f:
+    yaml.safe_dump(manifest, f, sort_keys=False)
+print("1" if has_unresolved else "0")
 PY
-    mv "${tmp}" "${staging}/gtpack.yaml"
+    )
+    if [[ -f "${staging}/gtpack.yaml.tmp" ]]; then
+      mv "${staging}/gtpack.yaml.tmp" "${staging}/gtpack.yaml"
+    fi
   fi
 
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
+
+  if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
+    echo "::warning::Skipping resolve/build/doctor for secrets-${slug}: external components not available locally (dry-run only)"
+    continue
+  fi
 
   LOCK_FILE="${staging}/pack.lock.json"
   greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
@@ -155,12 +197,14 @@ PY
     --bundle none \
     "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
-  greentic-pack doctor \
-    --validate \
-    --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --validator-pack "${VALIDATOR_PACK}" \
-    "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
+  if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+    greentic-pack doctor \
+      --validate \
+      --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
+      --validator-pack "${VALIDATOR_PACK}" \
+      "${PACK_MODE_ARGS[@]}" \
+      --allow-oci-tags
+  fi
 
   echo "::notice::built pack secrets-${slug}.gtpack"
   built_gtpacks+=("${OUT_DIR}/secrets-${slug}.gtpack")
@@ -178,6 +222,12 @@ if [[ "${#built_gtpacks[@]}" -gt 0 ]]; then
 fi
 
 echo "${VERSION}" > "${OUT_DIR}/VERSION"
+
+if [[ ! -s "${bundle_deps}" ]]; then
+  echo "::warning::No provider packs were built — skipping bundle pack"
+  rm -f "${bundle_deps}"
+  exit 0
+fi
 
 # Build bundle pack with packc.
 cat >"${bundle_staging}/pack.yaml" <<EOF
@@ -202,11 +252,13 @@ greentic-pack build \
   --bundle none \
   "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
-greentic-pack doctor \
-  --validate \
-  --pack "${OUT_DIR}/secrets-providers.gtpack" \
-  --validator-pack "${VALIDATOR_PACK}" \
-  "${PACK_MODE_ARGS[@]}" \
-  --allow-oci-tags
+if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+  greentic-pack doctor \
+    --validate \
+    --pack "${OUT_DIR}/secrets-providers.gtpack" \
+    --validator-pack "${VALIDATOR_PACK}" \
+    "${PACK_MODE_ARGS[@]}" \
+    --allow-oci-tags
+fi
 
 echo "::notice::built bundle pack secrets-providers.gtpack"

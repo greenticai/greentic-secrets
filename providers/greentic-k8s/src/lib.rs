@@ -244,7 +244,7 @@ impl SecretsBackend for K8sSecretsBackend {
 
         for snapshot in versions.into_iter().rev() {
             if snapshot.deleted {
-                continue;
+                return Ok(None);
             }
             return snapshot.into_versioned();
         }
@@ -755,7 +755,7 @@ fn sanitize_label(value: &str) -> String {
         match ch {
             'a'..='z' | '0'..='9' => label.push(ch),
             'A'..='Z' => label.push(ch.to_ascii_lowercase()),
-            '-' | '_' | '.' => {
+            '-' | '_' | '.' | '/' => {
                 if !label.ends_with('-') {
                     label.push('-');
                 }
@@ -803,14 +803,15 @@ fn join_labels(labels: &[String], max_len: usize) -> String {
 }
 
 fn canonical_storage_key(uri: &SecretUri) -> String {
-    format!(
+    let raw = format!(
         "{}/{}/{}/{}/{}",
         uri.scope().env(),
         uri.scope().tenant(),
         uri.scope().team().unwrap_or("_"),
         uri.category(),
         uri.name()
-    )
+    );
+    sanitize_label(&raw)
 }
 
 fn decode_bytes(input: &str) -> SecretsResult<Vec<u8>> {
