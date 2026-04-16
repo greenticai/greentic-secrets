@@ -9,6 +9,7 @@ DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
 PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-auto}"
+SKIP_DOCTOR="${SKIP_DOCTOR:-0}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
@@ -196,12 +197,14 @@ PY
     --bundle none \
     "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
-  greentic-pack doctor \
-    --validate \
-    --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --validator-pack "${VALIDATOR_PACK}" \
-    "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
+  if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+    greentic-pack doctor \
+      --validate \
+      --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
+      --validator-pack "${VALIDATOR_PACK}" \
+      "${PACK_MODE_ARGS[@]}" \
+      --allow-oci-tags
+  fi
 
   echo "::notice::built pack secrets-${slug}.gtpack"
   built_gtpacks+=("${OUT_DIR}/secrets-${slug}.gtpack")
@@ -249,11 +252,13 @@ greentic-pack build \
   --bundle none \
   "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
-greentic-pack doctor \
-  --validate \
-  --pack "${OUT_DIR}/secrets-providers.gtpack" \
-  --validator-pack "${VALIDATOR_PACK}" \
-  "${PACK_MODE_ARGS[@]}" \
-  --allow-oci-tags
+if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+  greentic-pack doctor \
+    --validate \
+    --pack "${OUT_DIR}/secrets-providers.gtpack" \
+    --validator-pack "${VALIDATOR_PACK}" \
+    "${PACK_MODE_ARGS[@]}" \
+    --allow-oci-tags
+fi
 
 echo "::notice::built bundle pack secrets-providers.gtpack"
