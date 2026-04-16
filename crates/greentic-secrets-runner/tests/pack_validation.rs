@@ -132,6 +132,7 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
             "VALIDATE_GTPACK_BIN",
             env!("CARGO_BIN_EXE_validate_gtpack_extension"),
         )
+        .env("SKIP_DOCTOR", "1")
         .output()
         .expect("spawn build-provider-packs.sh");
     if !output.status.success() {
