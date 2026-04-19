@@ -131,7 +131,7 @@ impl K8sSecretsBackend {
 
     fn list_versions(&self, namespace: &str, key: &str) -> SecretsResult<Vec<SecretSnapshot>> {
         let mut snapshots = Vec::new();
-        let selector = format!("{LABEL_KEY}={key}");
+        let selector = format!("{LABEL_KEY}={}", storage_key_label_value(key));
         let selector = percent_encode(&selector);
         let mut continue_token: Option<String> = None;
 
@@ -683,7 +683,10 @@ fn secret_manifest(
     deleted: bool,
 ) -> SecretsResult<Value> {
     let mut labels = Map::new();
-    labels.insert(LABEL_KEY.into(), Value::String(key.to_string()));
+    labels.insert(
+        LABEL_KEY.into(),
+        Value::String(storage_key_label_value(key)),
+    );
     labels.insert(LABEL_VERSION.into(), Value::String(version.to_string()));
     labels.insert(
         LABEL_ENV.into(),
@@ -810,6 +813,15 @@ fn canonical_storage_key(uri: &SecretUri) -> String {
         uri.category(),
         uri.name()
     )
+}
+
+fn storage_key_label_value(key: &str) -> String {
+    let digest = Sha256::digest(key.as_bytes());
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    encoded
 }
 
 fn decode_bytes(input: &str) -> SecretsResult<Vec<u8>> {
