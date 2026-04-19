@@ -9,6 +9,7 @@ registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 export COMPONENTS_REGISTRY="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 COMPONENT_FILTER_RAW="${COMPONENT_FILTER:-}"
+ORAS_LOGIN_MODE="${ORAS_LOGIN_MODE:-auto}"
 
 "${ROOT_DIR}/scripts/build-components.sh"
 
@@ -23,6 +24,42 @@ if ! command -v oras >/dev/null 2>&1; then
 fi
 
 GIT_SHA="$(git rev-parse HEAD)"
+REGISTRY_HOST="${COMPONENTS_REGISTRY%%/*}"
+OCI_USERNAME="${ORAS_USERNAME:-${GREENTIC_OCI_USERNAME:-${GHCR_USER:-}}}"
+OCI_PASSWORD="${ORAS_PASSWORD:-${GREENTIC_OCI_PASSWORD:-${GHCR_TOKEN:-}}}"
+
+maybe_oras_login() {
+  case "${ORAS_LOGIN_MODE}" in
+    skip)
+      echo "Skipping oras login because ORAS_LOGIN_MODE=skip"
+      return 0
+      ;;
+    auto)
+      if [[ -z "${OCI_USERNAME}" || -z "${OCI_PASSWORD}" ]]; then
+        echo "Skipping oras login because no OCI credentials were provided"
+        echo "Set one of: ORAS_USERNAME/ORAS_PASSWORD, GREENTIC_OCI_USERNAME/GREENTIC_OCI_PASSWORD, or GHCR_USER/GHCR_TOKEN"
+        return 0
+      fi
+      ;;
+    require)
+      if [[ -z "${OCI_USERNAME}" || -z "${OCI_PASSWORD}" ]]; then
+        echo "[ERROR] ORAS_LOGIN_MODE=require but OCI credentials are missing" >&2
+        echo "[ERROR] Set ORAS_USERNAME/ORAS_PASSWORD, GREENTIC_OCI_USERNAME/GREENTIC_OCI_PASSWORD, or GHCR_USER/GHCR_TOKEN" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      echo "[ERROR] unsupported ORAS_LOGIN_MODE=${ORAS_LOGIN_MODE}" >&2
+      echo "[ERROR] expected one of: auto, require, skip" >&2
+      exit 1
+      ;;
+  esac
+
+  echo "Logging into ${REGISTRY_HOST} as ${OCI_USERNAME} using env-provided credentials"
+  printf '%s\n' "${OCI_PASSWORD}" | oras login "${REGISTRY_HOST}" -u "${OCI_USERNAME}" --password-stdin
+}
+
+maybe_oras_login
 
 echo "Pushing components to GHCR"
 if [[ -n "${COMPONENT_FILTER_RAW}" ]]; then
@@ -58,6 +95,15 @@ jq -c '.[]' "${DIGESTS}" | while read -r entry; do
     echo "[ERROR] missing artifact ${wasm_path}" >&2
     exit 1
   fi
+  echo ">> Preparing push for ${id}"
+  echo "   ref: ${ref}"
+  echo "   wasm: ${wasm_path}"
+  echo "   content digest: ${content_digest}"
+  echo "   size bytes: $(stat -c%s "${wasm_path}")"
+  echo "   checking GHCR auth with oras discover ${ref}"
+  auth_probe_output="$(oras discover "${ref}" 2>&1 || true)"
+  printf '%s\n' "${auth_probe_output}"
+  echo "   starting oras push for ${ref}"
   push_output="$(oras push "${ref}" \
     --disable-path-validation \
     "${wasm_path}:application/vnd.greentic.wasm.component" \
@@ -68,6 +114,7 @@ jq -c '.[]' "${DIGESTS}" | while read -r entry; do
   oci_digest="$(printf '%s\n' "${push_output}" | awk '/Digest:/ {print $2}' | tail -n1)"
   if [[ -z "${oci_digest}" ]]; then
     echo "[ERROR] could not determine OCI manifest digest for ${ref}" >&2
+    echo "[ERROR] full oras push output was printed above" >&2
     exit 1
   fi
   tmp="$(mktemp)"
