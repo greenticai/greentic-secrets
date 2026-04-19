@@ -113,7 +113,7 @@ async fn ensure_kms_key() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "integration test; requires GREENTIC_INTEGRATION=1"]
 async fn conformance_aws() -> Result<()> {
     if std::env::var("GREENTIC_INTEGRATION").unwrap_or_default() != "1" {
