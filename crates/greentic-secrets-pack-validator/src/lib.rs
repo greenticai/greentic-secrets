@@ -166,3 +166,193 @@ fn diagnostic(
         hint,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greentic_types::{
+        ExtensionInline, ExtensionRef, PROVIDER_EXTENSION_ID, PackId, PackKind, PackSignatures,
+        ProviderRuntimeRef, SecretRequirement, encode_pack_manifest,
+    };
+    use semver::Version;
+    use std::collections::BTreeMap;
+
+    fn manifest_with_pack_id(pack_id: &str) -> PackManifest {
+        PackManifest {
+            schema_version: "pack-v1".into(),
+            pack_id: PackId::new(pack_id).expect("pack id"),
+            name: None,
+            version: Version::parse("0.1.0").expect("version"),
+            kind: PackKind::Application,
+            publisher: "greentic".into(),
+            components: Vec::new(),
+            flows: Vec::new(),
+            dependencies: Vec::new(),
+            capabilities: Vec::new(),
+            secret_requirements: Vec::new(),
+            signatures: PackSignatures::default(),
+            bootstrap: None,
+            extensions: None,
+        }
+    }
+
+    fn provider_inline(component_ref: &str) -> ProviderExtensionInline {
+        ProviderExtensionInline {
+            providers: vec![ProviderDecl {
+                provider_type: "vendor.provider".into(),
+                capabilities: Vec::new(),
+                ops: Vec::new(),
+                config_schema_ref: "assets/schemas/secrets/demo/config.schema.json".into(),
+                state_schema_ref: None,
+                runtime: ProviderRuntimeRef {
+                    component_ref: component_ref.into(),
+                    export: "invoke".into(),
+                    world: "greentic:provider/schema-core@1.0.0".into(),
+                },
+                docs_ref: None,
+            }],
+            additional_fields: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn detects_secret_requirements_assets() {
+        assert!(has_secret_requirements_asset(&[
+            "assets/secret-requirements.json".to_string()
+        ]));
+        assert!(has_secret_requirements_asset(&[
+            "assets/secret_requirements.json".to_string()
+        ]));
+        assert!(!has_secret_requirements_asset(&["README.md".to_string()]));
+    }
+
+    #[test]
+    fn secrets_required_for_pack_id_requirements_and_provider_hints() {
+        let by_pack_id = manifest_with_pack_id("secrets-demo");
+        assert!(secrets_required(&by_pack_id));
+
+        let mut by_requirement = manifest_with_pack_id("vendor.demo");
+        let mut requirement = SecretRequirement::default();
+        requirement.key = "API_KEY".into();
+        by_requirement.secret_requirements.push(requirement);
+        assert!(secrets_required(&by_requirement));
+
+        let mut by_provider = manifest_with_pack_id("vendor.demo");
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            PROVIDER_EXTENSION_ID.to_string(),
+            ExtensionRef {
+                kind: PROVIDER_EXTENSION_ID.into(),
+                version: "1.0.0".into(),
+                digest: None,
+                location: None,
+                inline: Some(ExtensionInline::Provider(provider_inline(
+                    "vendor.secrets.runtime",
+                ))),
+            },
+        );
+        by_provider.extensions = Some(extensions);
+        assert!(secrets_required(&by_provider));
+    }
+
+    #[test]
+    fn validate_key_format_warns_for_non_secret_style_keys() {
+        let mut manifest = manifest_with_pack_id("vendor.demo");
+        let mut bad = SecretRequirement::default();
+        bad.key = "dbPassword".into();
+        manifest.secret_requirements.push(bad);
+
+        let diagnostics = validate_key_format(&manifest);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "SEC_BAD_KEY_FORMAT");
+    }
+
+    #[test]
+    fn validate_key_format_accepts_upper_snake_and_uri_keys() {
+        let mut manifest = manifest_with_pack_id("vendor.demo");
+        let mut env_key = SecretRequirement::default();
+        env_key.key = "DB_PASSWORD".into();
+        let mut uri_key = SecretRequirement::default();
+        uri_key.key = "greentic://tenant/configs/db".into();
+        manifest.secret_requirements.extend([env_key, uri_key]);
+
+        assert!(validate_key_format(&manifest).is_empty());
+    }
+
+    #[test]
+    fn decode_manifest_roundtrips_encoded_bytes() {
+        let manifest = manifest_with_pack_id("vendor.demo");
+        let bytes = encode_pack_manifest(&manifest).expect("encode");
+        let decoded = decode_manifest(&bytes).expect("decode");
+        assert_eq!(decoded.pack_id, manifest.pack_id);
+    }
+
+    #[test]
+    fn is_upper_snake_requires_only_upper_ascii_digits_or_underscores() {
+        assert!(is_upper_snake("DB_PASSWORD_2"));
+        assert!(!is_upper_snake("db_password"));
+        assert!(!is_upper_snake("DB-PASSWORD"));
+        assert!(!is_upper_snake(""));
+    }
+
+    #[test]
+    fn provider_decl_only_matches_secretish_fields() {
+        let non_secret = ProviderDecl {
+            provider_type: "vendor.cache".into(),
+            capabilities: Vec::new(),
+            ops: Vec::new(),
+            config_schema_ref: "assets/schemas/cache/config.schema.json".into(),
+            state_schema_ref: None,
+            runtime: ProviderRuntimeRef {
+                component_ref: "vendor.cache.runtime".into(),
+                export: "invoke".into(),
+                world: "greentic:provider/schema-core@1.0.0".into(),
+            },
+            docs_ref: None,
+        };
+        assert!(!provider_decl_mentions_secrets(&non_secret));
+        assert!(!provider_extension_mentions_secrets(
+            &ProviderExtensionInline {
+                providers: vec![non_secret],
+                additional_fields: BTreeMap::new(),
+            }
+        ));
+    }
+
+    #[test]
+    fn guest_applies_and_validate_cover_asset_and_missing_asset_paths() {
+        let manifest = manifest_with_pack_id("secrets-demo");
+        let manifest_cbor = encode_pack_manifest(&manifest).expect("encode");
+
+        assert!(<SecretsPackValidator as Guest>::applies(PackInputs {
+            manifest_cbor: manifest_cbor.clone(),
+            sbom_json: "{}".into(),
+            file_index: vec![SECRET_REQUIREMENTS_ASSET.to_owned()],
+        }));
+
+        let diagnostics = <SecretsPackValidator as Guest>::validate(PackInputs {
+            manifest_cbor,
+            sbom_json: "{}".into(),
+            file_index: Vec::new(),
+        });
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.code == "SEC_REQUIREMENTS_ASSET_MISSING")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.code == "SEC_SECRET_NOT_SENSITIVE")
+        );
+    }
+
+    #[test]
+    fn guest_uses_asset_presence_when_manifest_cannot_be_decoded() {
+        assert!(<SecretsPackValidator as Guest>::applies(PackInputs {
+            manifest_cbor: vec![1, 2, 3],
+            sbom_json: "{}".into(),
+            file_index: vec![SECRET_REQUIREMENTS_ASSET_ALT.to_owned()],
+        }));
+    }
+}

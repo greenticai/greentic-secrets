@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use azure_core::auth::TokenCredential;
-use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
+use azure_core::credentials::TokenCredential;
+use azure_identity::DeveloperToolsCredential;
 use secrets_provider_azure_kv::build_backend;
 use secrets_provider_tests::{Capabilities, ConformanceSuite, ProviderUnderTest, TestEnv};
 
@@ -87,12 +87,10 @@ async fn ensure_bearer_token() -> Result<()> {
         return Ok(());
     }
 
-    let credential: Box<dyn TokenCredential> = Box::new(DefaultAzureCredential::create(
-        TokenCredentialOptions::default(),
-    )?);
+    let credential = DeveloperToolsCredential::new(None)?;
 
     let token = credential
-        .get_token(&["https://vault.azure.net/.default"])
+        .get_token(&["https://vault.azure.net/.default"], None)
         .await?;
     let header = format!("Bearer {}", token.token.secret());
     // Safe: setting process env for test credential forwarding.

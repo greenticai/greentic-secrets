@@ -423,4 +423,96 @@ mod tests {
         let diagnostics = validate_secret_requirement_decls(&decls, true);
         assert!(diagnostics.is_empty());
     }
+
+    #[test]
+    fn detects_secret_requirements_from_extension_location() {
+        let mut manifest = base_manifest("vendor.demo.pack");
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "vendor.secret-req".to_owned(),
+            ExtensionRef {
+                kind: "vendor.secret-req".to_owned(),
+                version: "1.0.0".to_owned(),
+                digest: None,
+                location: Some("assets/secret-requirements.json".to_owned()),
+                inline: None,
+            },
+        );
+        manifest.extensions = Some(extensions);
+
+        assert!(manifest_references_secret_requirements(&manifest));
+        assert!(is_secrets_pack(&manifest));
+    }
+
+    #[test]
+    fn detects_secret_requirements_from_unknown_inline_payload() {
+        let mut manifest = base_manifest("vendor.demo.pack");
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "vendor.secret-req".to_owned(),
+            ExtensionRef {
+                kind: "vendor.secret-req".to_owned(),
+                version: "1.0.0".to_owned(),
+                digest: None,
+                location: None,
+                inline: Some(ExtensionInline::Other(serde_json::json!({
+                    "path": "assets/secret_requirements.json"
+                }))),
+            },
+        );
+        manifest.extensions = Some(extensions);
+
+        assert!(manifest_references_secret_requirements(&manifest));
+    }
+
+    #[test]
+    fn key_format_validator_accepts_greentic_uri_keys() {
+        let mut manifest = base_manifest("vendor.demo.pack");
+        let mut requirement = greentic_types_validate::SecretRequirement::default();
+        requirement.key = "greentic://tenant/configs/db".into();
+        manifest.secret_requirements.push(requirement);
+
+        let diagnostics = SecretKeyFormatValidator.validate(&manifest);
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn validators_are_registered_in_expected_order() {
+        let ids: Vec<_> = secrets_validators()
+            .into_iter()
+            .map(|validator| validator.id())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "secrets.requirements.decl",
+                "secrets.requirements.well_formed",
+                "secrets.requirements.key_format"
+            ]
+        );
+    }
+
+    #[test]
+    fn well_formed_validator_reports_pack_access_requirement_without_embedded_requirements() {
+        let manifest = base_manifest("vendor.demo.pack");
+        let diagnostics = SecretRequirementsWellFormedValidator.validate(&manifest);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diag| diag.code == "SEC_REQ_PARSE_NEEDS_PACK_ACCESS")
+        );
+    }
+
+    #[test]
+    fn secrets_required_hint_detects_secret_capability_names() {
+        let mut manifest = base_manifest("vendor.demo.pack");
+        manifest
+            .capabilities
+            .push(greentic_types_validate::ComponentCapability {
+                name: "secret-sync".into(),
+                description: None,
+            });
+
+        assert!(secrets_required_hint(&manifest));
+    }
 }

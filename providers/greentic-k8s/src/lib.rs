@@ -755,11 +755,10 @@ fn sanitize_label(value: &str) -> String {
         match ch {
             'a'..='z' | '0'..='9' => label.push(ch),
             'A'..='Z' => label.push(ch.to_ascii_lowercase()),
-            '-' | '_' | '.' => {
-                if !label.ends_with('-') {
-                    label.push('-');
-                }
+            '-' | '_' | '.' if !label.ends_with('-') => {
+                label.push('-');
             }
+            '-' | '_' | '.' => {}
             _ => {}
         }
     }

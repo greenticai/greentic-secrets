@@ -325,6 +325,20 @@ fn configure_k8s(builder: CoreBuilder, config: &ResolverConfig) -> (CoreBuilder,
 mod tests {
     use super::*;
     use serde_json::{Value, json};
+    use std::path::PathBuf;
+
+    fn restore_env(key: &str, original: Option<std::ffi::OsString>) {
+        match original {
+            Some(value) => {
+                // SAFETY: test restores the original environment value before returning.
+                unsafe { std::env::set_var(key, value) }
+            }
+            None => {
+                // SAFETY: test restores the original environment state before returning.
+                unsafe { std::env::remove_var(key) }
+            }
+        }
+    }
 
     #[tokio::test]
     async fn defaults_to_local_provider() {
@@ -370,5 +384,54 @@ mod tests {
             matches!(resolver.provider(), Provider::Aws | Provider::Local),
             "resolver should either use AWS (when feature enabled) or fallback to Local"
         );
+    }
+
+    #[test]
+    fn from_env_reads_provider_dev_flag_and_file_root() {
+        let provider_key = "GREENTIC_SECRETS_PROVIDER";
+        let dev_key = "GREENTIC_SECRETS_DEV";
+        let root_key = "GREENTIC_SECRETS_FILE_ROOT";
+        let original_provider = std::env::var_os(provider_key);
+        let original_dev = std::env::var_os(dev_key);
+        let original_root = std::env::var_os(root_key);
+
+        // SAFETY: this test restores the original process environment before returning.
+        unsafe {
+            std::env::set_var(provider_key, "local");
+            std::env::set_var(dev_key, "0");
+            std::env::set_var(root_key, "/tmp/greentic-secrets-tests");
+        }
+
+        let config = ResolverConfig::from_env();
+        restore_env(provider_key, original_provider);
+        restore_env(dev_key, original_dev);
+        restore_env(root_key, original_root);
+
+        assert_eq!(config.provider, Provider::Local);
+        assert!(!config.dev_fallback);
+        assert_eq!(
+            config.file_root,
+            Some(PathBuf::from("/tmp/greentic-secrets-tests"))
+        );
+    }
+
+    #[test]
+    fn builder_methods_override_configuration() {
+        let config = ResolverConfig::new()
+            .provider(Provider::K8s)
+            .tenant("tenant-a")
+            .team("core")
+            .cache_ttl(Duration::from_secs(30))
+            .cache_capacity(128)
+            .file_root("/tmp/secrets")
+            .dev_fallback(false);
+
+        assert_eq!(config.provider, Provider::K8s);
+        assert_eq!(config.tenant.as_deref(), Some("tenant-a"));
+        assert_eq!(config.team.as_deref(), Some("core"));
+        assert_eq!(config.cache_ttl, Some(Duration::from_secs(30)));
+        assert_eq!(config.cache_capacity, Some(128));
+        assert_eq!(config.file_root, Some(PathBuf::from("/tmp/secrets")));
+        assert!(!config.dev_fallback);
     }
 }
