@@ -2,14 +2,13 @@ schema_version: pack-v1
 id: greentic.secrets.gcp-sm
 version: "__PACK_VERSION__"
 name: "GCP Secret Manager provider pack"
-description: "Enterprise flows for GCP Secret Manager: onboarding, validation, read/write, rotation, audit export, breakglass."
+description: "Enterprise flows for GCP Secret Manager: onboarding, validation, read/write, audit export, breakglass."
 kind: provider
 entrypoints:
   onboard: flows/provider_onboard.ygtc
   validate: flows/provider_validate.ygtc
   read_secret: flows/provider_read_secret.ygtc
   write_secret: flows/provider_write_secret.ygtc
-  rotate_secret: flows/provider_rotate_secret.ygtc
   export_audit: flows/provider_export_audit.ygtc
   breakglass: flows/provider_breakglass.ygtc
 components:
@@ -17,10 +16,6 @@ components:
     version: "__PACK_VERSION__"
     source: oci
     uri: ghcr.io/greenticai/components/greentic.secrets.provider.gcp_sm:__PACK_VERSION__
-  - id: greentic.secrets.generators
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greenticai/components/greentic.secrets.generators:__PACK_VERSION__
   - id: greentic.secrets.audit_exporter
     version: "__PACK_VERSION__"
     source: oci
