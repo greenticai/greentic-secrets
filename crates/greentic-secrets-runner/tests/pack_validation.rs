@@ -148,6 +148,15 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
             );
             return;
         }
+        if combined.contains("can't find crate for `profiler_builtins`")
+            || combined.contains("can't find crate for profiler_builtins")
+            || (combined.contains("instrument-coverage") && combined.contains("wasm32"))
+        {
+            eprintln!(
+                "skipping built_provider_gtpacks_embed_canonical_provider_extension: coverage instrumentation is unsupported for the wasm component build"
+            );
+            return;
+        }
         panic!(
             "build-provider-packs.sh failed with status {:?}\nstdout:\n{}\nstderr:\n{}",
             output.status.code(),

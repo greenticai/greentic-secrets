@@ -17,7 +17,7 @@ Trust policy must allow GitHub OIDC with repo scoping, e.g.:
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:greentic-ai/greentic-secrets:*"
+          "token.actions.githubusercontent.com:sub": "repo:greenticai/greentic-secrets:*"
         }
       }
     }

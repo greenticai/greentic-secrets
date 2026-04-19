@@ -363,7 +363,7 @@ impl SecretsBackend for DevBackend {
             ));
         }
 
-        items.sort_by(|a, b| a.uri.to_string().cmp(&b.uri.to_string()));
+        items.sort_by_key(|a| a.uri.to_string());
         Ok(items)
     }
 

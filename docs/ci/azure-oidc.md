@@ -13,7 +13,7 @@ This repository runs Azure Key Vault integration tests using GitHub federated id
 Configure the app registration with a federated credential:
 
 - Issuer: `https://token.actions.githubusercontent.com`
-- Subject: `repo:greentic-ai/greentic-secrets:*`
+- Subject: `repo:greenticai/greentic-secrets:*`
 - Audience: `api://AzureADTokenExchange`
 
 ## Workflow variables
