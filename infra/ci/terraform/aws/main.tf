@@ -17,7 +17,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 data "aws_iam_policy_document" "assume_role" {
   statement {
-    effect = "Allow"
+    effect  = "Allow"
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
     principals {
@@ -63,4 +63,3 @@ resource "aws_iam_role_policy_attachment" "attach" {
   role       = aws_iam_role.ci.name
   policy_arn = aws_iam_policy.secrets.arn
 }
-

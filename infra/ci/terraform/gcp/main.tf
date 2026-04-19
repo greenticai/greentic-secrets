@@ -19,9 +19,9 @@ resource "google_iam_workload_identity_pool_provider" "provider" {
   display_name                       = "GitHub Provider"
   description                        = "GitHub OIDC provider for CI"
   attribute_mapping = {
-    "google.subject"          = "assertion.sub"
-    "attribute.repository"    = "assertion.repository"
-    "attribute.ref"           = "assertion.ref"
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
   }
   attribute_condition = "assertion.repository == \"${local.repo_slug}\" && assertion.ref == \"${var.github_ref_pattern}\""
   oidc {
@@ -61,4 +61,3 @@ resource "google_project_iam_binding" "secret_binding" {
   role    = google_project_iam_custom_role.secret_role.name
   members = ["serviceAccount:${google_service_account.ci.email}"]
 }
-

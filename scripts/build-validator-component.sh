@@ -32,12 +32,14 @@ if [[ ! -f "${wasm_path}" ]]; then
   exit 1
 fi
 
-cp "${wasm_path}" "${OUT_DIR}/secrets-pack-validator.wasm"
+local_path="${OUT_DIR}/secrets-pack-validator.wasm"
+cp "${wasm_path}" "${local_path}"
 
 digest="$(sha256sum "${wasm_path}" | awk '{print $1}')"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 ref="ghcr.io/${registry_owner}/validators/secrets:${VERSION}"
+local_ref="file://${local_path}"
 digests_json="${OUT_DIR}/digests.json"
 echo "[]" > "${digests_json}"
 
@@ -45,9 +47,10 @@ tmp="$(mktemp)"
 jq --arg id "greentic.validators.secrets" \
    --arg version "${VERSION}" \
    --arg ref "${ref}" \
+   --arg local_ref "${local_ref}" \
    --arg digest "${digest}" \
    --arg path "secrets-pack-validator.wasm" \
-   '. += [{"id":$id,"version":$version,"ref":$ref,"digest":$digest,"path":$path}]' \
+   '. += [{"id":$id,"version":$version,"ref":$ref,"local_ref":$local_ref,"digest":$digest,"path":$path}]' \
    "${digests_json}" > "${tmp}"
 mv "${tmp}" "${digests_json}"
 

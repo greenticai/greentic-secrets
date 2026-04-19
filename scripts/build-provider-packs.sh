@@ -7,12 +7,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/packs}"
 DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
+VALIDATOR_DIGESTS_JSON="$ROOT_DIR/target/validators/digests.json"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
 SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter}"
+PACK_COMPONENT_SOURCE="${PACK_COMPONENT_SOURCE:-auto}"
 
 VERSION="$(python3 - <<'PY'
 import re
@@ -37,6 +39,7 @@ built_gtpacks=()
 echo "Building provider packs for version ${VERSION}"
 echo "Components registry namespace: ${components_registry}"
 echo "Shared component policy: ${PREBUILD_COMPONENTS}"
+echo "Component source policy: ${PACK_COMPONENT_SOURCE}"
 if [[ "${PACK_OFFLINE}" == "1" ]]; then
   PACK_MODE_ARGS=(--offline)
   echo "Pack mode: offline"
@@ -122,23 +125,76 @@ for slug in "${providers[@]}"; do
   rm -f "${staging}/gtpack.yaml.bak"
 
   # If digests are available, rewrite component URIs to pin them.
-  if [[ -f "${DIGESTS_JSON}" ]]; then
+  if [[ -f "${DIGESTS_JSON}" || -f "${VALIDATOR_DIGESTS_JSON}" ]]; then
     tmp="${staging}/gtpack.tmp.yaml"
-    python3 - "$DIGESTS_JSON" "$staging/gtpack.yaml" > "${tmp}" <<'PY'
-import json, sys, yaml
-digests = {d["id"]: d for d in json.load(open(sys.argv[1]))}
-manifest = yaml.safe_load(open(sys.argv[2]))
-for comp in manifest.get("components", []):
-    did = comp.get("id")
-    d = digests.get(did)
-    if d:
-        oci_digest = str(d.get("oci_digest", "")).strip()
+    python3 - "$DIGESTS_JSON" "$VALIDATOR_DIGESTS_JSON" "$staging/gtpack.yaml" > "${tmp}" <<'PY'
+import json, os, sys, yaml
+
+component_digests_path, validator_digests_path, manifest_path = sys.argv[1:4]
+source_mode = os.environ.get("PACK_COMPONENT_SOURCE", "auto").strip().lower()
+if source_mode not in {"auto", "local", "registry"}:
+    raise SystemExit(f"unsupported PACK_COMPONENT_SOURCE={source_mode!r}")
+
+all_digests = []
+for path in (component_digests_path, validator_digests_path):
+    if path and os.path.exists(path):
+        all_digests.extend(json.load(open(path)))
+
+digests_by_id = {d["id"]: d for d in all_digests if d.get("id")}
+digests_by_ref = {d["ref"]: d for d in all_digests if d.get("ref")}
+
+def resolved_ref(digest_entry):
+    local_ref = str(digest_entry.get("local_ref", "")).strip()
+    oci_digest = str(digest_entry.get("oci_digest", "")).strip()
+    if source_mode == "local":
+        return local_ref or digest_entry["ref"]
+    if source_mode == "registry":
         if oci_digest:
             if not oci_digest.startswith("sha256:"):
                 oci_digest = f"sha256:{oci_digest}"
-            comp["uri"] = f"{d['ref']}@{oci_digest}"
-        else:
-            comp["uri"] = d["ref"]
+            return f"{digest_entry['ref']}@{oci_digest}"
+        return digest_entry["ref"]
+    if oci_digest:
+        if not oci_digest.startswith("sha256:"):
+            oci_digest = f"sha256:{oci_digest}"
+        return f"{digest_entry['ref']}@{oci_digest}"
+    if local_ref:
+        return local_ref
+    return digest_entry["ref"]
+
+def resolved_source(digest_entry):
+    resolved = resolved_ref(digest_entry)
+    return "file" if resolved.startswith("file://") else "oci"
+
+def maybe_rewrite_component_ref(value):
+    digest_entry = digests_by_ref.get(value)
+    if digest_entry:
+        return resolved_ref(digest_entry)
+    bare_value = value.split("@", 1)[0]
+    digest_entry = digests_by_ref.get(bare_value)
+    if digest_entry:
+        return resolved_ref(digest_entry)
+    return value
+
+def rewrite_extension_refs(node):
+    if isinstance(node, dict):
+        for key, value in list(node.items()):
+            if key == "component_ref" and isinstance(value, str):
+                node[key] = maybe_rewrite_component_ref(value)
+            else:
+                rewrite_extension_refs(value)
+    elif isinstance(node, list):
+        for item in node:
+            rewrite_extension_refs(item)
+
+manifest = yaml.safe_load(open(manifest_path))
+for comp in manifest.get("components", []):
+    did = comp.get("id")
+    d = digests_by_id.get(did)
+    if d:
+        comp["uri"] = resolved_ref(d)
+        comp["source"] = resolved_source(d)
+rewrite_extension_refs(manifest.get("extensions", {}))
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
 PY
     mv "${tmp}" "${staging}/gtpack.yaml"

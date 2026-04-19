@@ -10,7 +10,7 @@ repository = "https://github.com/greenticai/greentic-secrets"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-greentic-types = { workspace = true }
+greentic_types_validate = { workspace = true }
 wit-bindgen = { workspace = true }
 
 [dev-dependencies]

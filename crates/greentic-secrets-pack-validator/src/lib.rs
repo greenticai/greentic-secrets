@@ -1,6 +1,8 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
-use greentic_types::{PackManifest, ProviderDecl, ProviderExtensionInline, decode_pack_manifest};
+use greentic_types_validate::{
+    PackManifest, ProviderDecl, ProviderExtensionInline, decode_pack_manifest,
+};
 
 wit_bindgen::generate!({
     world: "pack-validator",
@@ -170,7 +172,7 @@ fn diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use greentic_types::{
+    use greentic_types_validate::{
         ExtensionInline, ExtensionRef, PROVIDER_EXTENSION_ID, PackId, PackKind, PackSignatures,
         ProviderRuntimeRef, SecretRequirement, encode_pack_manifest,
     };

@@ -33,15 +33,15 @@ resource "azuread_application_federated_identity_credential" "github" {
 }
 
 resource "azurerm_key_vault" "kv" {
-  name                        = var.key_vault_name
-  location                    = azurerm_resource_group.rg.location
-  resource_group_name         = azurerm_resource_group.rg.name
-  tenant_id                   = var.tenant_id
-  sku_name                    = "standard"
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = false
-  enable_rbac_authorization   = var.use_rbac
-  tags                        = var.tags
+  name                       = var.key_vault_name
+  location                   = azurerm_resource_group.rg.location
+  resource_group_name        = azurerm_resource_group.rg.name
+  tenant_id                  = var.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+  enable_rbac_authorization  = var.use_rbac
+  tags                       = var.tags
 }
 
 resource "azurerm_role_assignment" "kv_role" {
@@ -59,4 +59,3 @@ resource "azurerm_key_vault_access_policy" "kv_policy" {
 
   secret_permissions = ["Get", "List", "Set", "Delete", "Recover"]
 }
-
