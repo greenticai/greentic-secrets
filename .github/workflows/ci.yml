@@ -83,7 +83,8 @@ jobs:
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
-          cargo install greentic-provision --version 0.4.16
+          cargo install cargo-binstall --locked
+          cargo binstall -y greentic-provision
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
       - name: Login to GHCR
