@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import json
-import sys
 import hashlib
+import json
+import os
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -41,7 +42,9 @@ def digest_for(component_id: str, uri: str, digests):
             return normalized, True
     entry = digests.get(component_id)
     if entry:
-        normalized = normalize_sha256_digest(entry.get("digest", ""))
+        normalized = normalize_sha256_digest(
+            entry.get("digest", "") or entry.get("content_digest", "")
+        )
         if normalized:
             return normalized, True
     # Keep `digest` present for schema compatibility using a deterministic
@@ -50,9 +53,16 @@ def digest_for(component_id: str, uri: str, digests):
     return synthetic, False
 
 
-def source_ref_for(uri: str, digest: str, pin_digest: bool):
+def source_ref_for(uri: str, digest: str, pin_digest: bool, flow_path: Path):
     if not uri:
         return None
+    if uri.startswith("file://"):
+        raw_path = uri[len("file://") :]
+        relative_path = os.path.relpath(raw_path, start=flow_path.parent)
+        payload = {"kind": "local", "path": relative_path}
+        if digest:
+            payload["digest"] = digest
+        return payload
     if uri.startswith("oci://"):
         uri = uri[len("oci://") :]
     if pin_digest and digest and "@sha256:" not in uri:
@@ -106,7 +116,7 @@ def main():
             digest, pin_digest = digest_for(component_id, uri, digests)
             summary_node = {
                 "component_id": component_id,
-                "source": source_ref_for(uri, digest, pin_digest),
+                "source": source_ref_for(uri, digest, pin_digest, flow_path),
                 "digest": digest,
             }
             summary_nodes[node_id] = summary_node
