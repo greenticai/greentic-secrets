@@ -20,9 +20,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.94.0
       - uses: Swatinem/rust-cache@v2
-      - uses: obi1kenobi/cargo-semver-checks-action@v2
+      - id: semver
+        continue-on-error: true
+        uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
           rust-toolchain: manual
+      - name: Emit advisory
+        if: steps.semver.outcome == 'failure'
+        run: |
+          echo "::warning title=Semver advisory::cargo-semver-checks detected a breaking change vs the current baseline. If intentional, plan to run start-next-minor.sh before the next stable cut. See plans/pre-release-minor-bump-lane.md."
 
   fast:
     runs-on: ubuntu-latest
