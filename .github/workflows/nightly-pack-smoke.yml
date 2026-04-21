@@ -1,0 +1,60 @@
+name: Nightly Pack Smoke
+# Moved off pull_request onto a nightly schedule per
+# plans/binary-bifurcation.md Phase A.4 lighter-PR-CI goal.
+# Manual runs remain available via workflow_dispatch.
+#
+# Cron slot: 04:42 UTC — even minute (Round 4 convention).
+# Staggered against sibling nightly jobs in this repo:
+#   codex-security-fix  04:31
+#   codex-semver-fix    04:37
+#   perf                04:47
+# and against fleet-wide slots listed in plans/binary-bifurcation.md.
+
+on:
+  schedule:
+    - cron: "42 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  secrets-pack-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+      - name: Install greentic-pack + greentic-provision
+        run: |
+          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
+          cargo install cargo-binstall --locked
+          cargo binstall -y greentic-provision
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
+            exit 1
+          fi
+          user="${GHCR_USER:-${GITHUB_ACTOR}}"
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
+      - name: Build provider packs
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          PACK_OFFLINE: "0"
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: ./scripts/build-provider-packs.sh
+      - name: Validate provisioning fixtures
+        run: ./scripts/validate-provision-fixtures.sh
+      - name: Run secrets pack conformance (dry-run)
+        run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
