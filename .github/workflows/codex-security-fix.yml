@@ -1,7 +1,12 @@
 name: Codex Security Fix
+# Moved off pull_request onto a nightly schedule. See plans/binary-bifurcation.md
+# Phase A.4. Manual runs remain available via workflow_dispatch.
+
 on:
-  pull_request:
-    branches: [main]
+  schedule:
+    # 04:31 UTC — staggered against nightly-semver-advisory callers (05:xx)
+    # and against sibling codex callers across the Wave 1 repos.
+    - cron: "31 4 * * *"
   workflow_dispatch:
     inputs:
       branch:
@@ -24,6 +29,8 @@ concurrency:
 jobs:
   security-fix:
     # Do not run on fork PRs to avoid passing untrusted refs into privileged remediation workflows.
+    # With pull_request trigger removed, this guard is a no-op; kept for defense-in-depth
+    # if pull_request is ever re-added.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: greenticai/.github/.github/workflows/codex-security-fix.yml@main
     with:
