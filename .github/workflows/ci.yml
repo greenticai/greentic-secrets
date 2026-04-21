@@ -7,20 +7,21 @@ on:
   pull_request:
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  fast:
+  ci:
+    uses: greenticai/.github/.github/workflows/pr-ci.yml@main
+    with:
+      variant: host
+
+  reqwest-blocking-guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
-      - run: cargo build --workspace --all-features
-      - run: RUST_BACKTRACE=1 cargo test --workspace --all-features -- --nocapture
       - name: Deny reqwest::blocking in Vault provider
         run: |
           if git grep -n "reqwest::blocking" -- providers/greentic-vault-kv >/dev/null; then
@@ -36,7 +37,9 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
 
       - if: matrix.provider == 'k8s'
         name: Start KinD
@@ -64,40 +67,3 @@ jobs:
         run: |
           echo "local provider '${{ matrix.provider }}' failed" >&2
           exit 1
-
-  secrets-pack-dry-run:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
-      - name: Install greentic-pack + greentic-provision
-        run: |
-          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
-          cargo install cargo-binstall --locked
-          cargo binstall -y greentic-provision
-      - name: Set up ORAS
-        uses: oras-project/setup-oras@v1
-      - name: Login to GHCR
-        env:
-          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-        run: |
-          if [[ -z "${GHCR_TOKEN:-}" ]]; then
-            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
-            exit 1
-          fi
-          user="${GHCR_USER:-${GITHUB_ACTOR}}"
-          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
-      - name: Build provider packs
-        env:
-          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
-          PACK_OFFLINE: "0"
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
-        run: ./scripts/build-provider-packs.sh
-      - name: Validate provisioning fixtures
-        run: ./scripts/validate-provision-fixtures.sh
-      - name: Run secrets pack conformance (dry-run)
-        run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
