@@ -1,12 +1,13 @@
 use greentic_secrets_spec::{
-    Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
+    KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
     SecretsError as Error, SecretsResult as Result, VersionedSecret,
 };
 use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::persistence::Persistence;
+use crate::passphrase_provider::PassphraseKeyProvider;
+use crate::persistence::{LoadedState, PersistMode, Persistence};
 use crate::state::{State, VersionEntry};
 
 pub(crate) const DEFAULT_PERSIST_PATH: &str = ".dev.secrets.env";
@@ -17,6 +18,8 @@ pub(crate) const PERSIST_ENV: &str = "GREENTIC_DEV_SECRETS_PATH";
 pub struct DevBackend {
     state: Arc<RwLock<State>>,
     persistence: Option<Persistence>,
+    key_provider: Option<Arc<dyn KeyProvider>>,
+    provider_salt: Option<[u8; 16]>,
 }
 
 impl Default for DevBackend {
@@ -31,21 +34,62 @@ impl DevBackend {
         Self {
             state: Arc::new(RwLock::new(State::default())),
             persistence: None,
+            key_provider: None,
+            provider_salt: None,
         }
     }
 
-    /// Construct a backend that persists state to the specified .env file.
-    pub fn with_persistence<P: Into<PathBuf>>(path: P) -> Result<Self> {
-        let path = path.into();
-        let (state, persistence) = Persistence::load(path)?;
+    /// Construct a backend that persists state to the specified path,
+    /// using legacy plaintext format (no encryption).
+    pub fn with_persistence_plaintext<P: Into<PathBuf>>(path: P) -> Result<Self> {
+        let (loaded, persistence) =
+            Persistence::load_with_provider(path.into(), None, false)?;
+        let state = match loaded {
+            LoadedState::Legacy { state } => state,
+            LoadedState::Encrypted { .. } => unreachable!("provider was None"),
+        };
         Ok(Self {
             state: Arc::new(RwLock::new(state)),
             persistence: Some(persistence),
+            key_provider: None,
+            provider_salt: None,
         })
+    }
+
+    /// Construct a backend that persists state to the specified path
+    /// and encrypts secrets using the given `PassphraseKeyProvider`.
+    pub fn with_persistence_encrypted<P: Into<PathBuf>>(
+        path: P,
+        provider: Arc<PassphraseKeyProvider>,
+        allow_downgrade: bool,
+    ) -> Result<Self> {
+        let salt = *provider.salt();
+        let dyn_provider: Arc<dyn KeyProvider> = provider;
+        let (loaded, persistence) = Persistence::load_with_provider(
+            path.into(),
+            Some(dyn_provider.clone()),
+            allow_downgrade,
+        )?;
+        let state = match loaded {
+            LoadedState::Encrypted { state, .. } | LoadedState::Legacy { state } => state,
+        };
+        Ok(Self {
+            state: Arc::new(RwLock::new(state)),
+            persistence: Some(persistence),
+            key_provider: Some(dyn_provider),
+            provider_salt: Some(salt),
+        })
+    }
+
+    /// Back-compat shim. Prefer `with_persistence_plaintext`.
+    #[deprecated(note = "use with_persistence_plaintext or with_persistence_encrypted")]
+    pub fn with_persistence<P: Into<PathBuf>>(path: P) -> Result<Self> {
+        Self::with_persistence_plaintext(path)
     }
 
     /// Construct from environment configuration. If the configured file does not exist,
     /// the backend falls back to in-memory storage.
+    #[allow(deprecated)]
     pub fn from_env() -> Result<Self> {
         if let Ok(path) = std::env::var(PERSIST_ENV) {
             return Self::with_persistence(PathBuf::from(path));
@@ -61,7 +105,14 @@ impl DevBackend {
 
     fn persist_if_needed(&self, state: State) -> Result<()> {
         if let Some(persistence) = &self.persistence {
-            persistence.persist(&state)?;
+            let mode = match (&self.key_provider, &self.provider_salt) {
+                (Some(p), Some(salt)) => PersistMode::Encrypted {
+                    provider: p.clone(),
+                    salt: *salt,
+                },
+                _ => PersistMode::Plaintext,
+            };
+            persistence.persist_with_mode(&state, mode)?;
         }
         Ok(())
     }
