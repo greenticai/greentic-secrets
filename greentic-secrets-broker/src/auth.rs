@@ -469,7 +469,7 @@ fn permissions_for_roles(roles: &[String]) -> Permissions {
     let mut permissions = Permissions::default();
     for role in roles {
         let role_perm = match role.as_str() {
-            "admin" | "platform-admin" => Permissions::all(),
+            "admin" | "platform-admin" | "tenant-admin" => Permissions::all(),
             "writer" | "service-writer" => Permissions::from_action(Action::Put)
                 .union(Permissions::from_action(Action::Get))
                 .union(Permissions::from_action(Action::Delete))
@@ -495,4 +495,123 @@ fn has_cross_team_role(roles: &[String]) -> bool {
 
 fn decode_ed25519_key(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
     URL_SAFE_NO_PAD.decode(value.as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn claims(tenant: &str, team: Option<&str>, roles: &[&str]) -> Claims {
+        Claims {
+            sub: "subject-1".into(),
+            iss: Some("issuer".into()),
+            aud: Some("audience".into()),
+            tenant: tenant.into(),
+            team: team.map(str::to_owned),
+            roles: roles.iter().map(|role| (*role).to_owned()).collect(),
+            actor: "tester".into(),
+            exp: i64::MAX,
+        }
+    }
+
+    fn authorizer() -> Authorizer {
+        Authorizer {
+            issuer: "issuer".into(),
+            audience: "audience".into(),
+            key_provider: KeyProvider::Static(Arc::new(vec![0; 32])),
+            internal_subjects: vec![SubjectMatcher {
+                prefix: "internal.".into(),
+            }],
+            internal_context: Some(Arc::new(AuthContext::new(
+                claims("acme", None, &["admin"]),
+                Permissions::all(),
+            ))),
+        }
+    }
+
+    #[test]
+    fn extract_bearer_token_accepts_common_forms() {
+        assert_eq!(extract_bearer_token("Bearer token-123"), Some("token-123"));
+        assert_eq!(
+            extract_bearer_token(" bearer token-123 "),
+            Some("token-123")
+        );
+        assert_eq!(extract_bearer_token("Basic nope"), None);
+    }
+
+    #[test]
+    fn permissions_for_roles_combines_expected_actions() {
+        let permissions = permissions_for_roles(&[
+            "reader".to_owned(),
+            "rotator".to_owned(),
+            "unknown".to_owned(),
+        ]);
+
+        assert!(permissions.allows(Action::Get));
+        assert!(permissions.allows(Action::List));
+        assert!(permissions.allows(Action::Rotate));
+        assert!(!permissions.allows(Action::Put));
+    }
+
+    #[test]
+    fn cross_team_role_detection_matches_admin_roles() {
+        assert!(has_cross_team_role(&["tenant-admin".to_owned()]));
+        assert!(has_cross_team_role(&["platform-admin".to_owned()]));
+        assert!(!has_cross_team_role(&["reader".to_owned()]));
+    }
+
+    #[test]
+    fn authorize_enforces_tenant_and_team_rules() {
+        let authorizer = authorizer();
+        let team_ctx = AuthContext::new(
+            claims("acme", Some("core"), &["writer"]),
+            permissions_for_roles(&["writer".to_owned()]),
+        );
+        let tenant_admin_ctx = AuthContext::new(
+            claims("acme", None, &["tenant-admin"]),
+            permissions_for_roles(&["tenant-admin".to_owned()]),
+        );
+
+        assert!(
+            authorizer
+                .authorize(&team_ctx, Action::Put, "acme", Some("core"))
+                .is_ok()
+        );
+        assert!(
+            authorizer
+                .authorize(&team_ctx, Action::Put, "acme", None)
+                .is_err()
+        );
+        assert!(
+            authorizer
+                .authorize(&tenant_admin_ctx, Action::Get, "acme", Some("other"))
+                .is_ok()
+        );
+        assert!(
+            authorizer
+                .authorize(&tenant_admin_ctx, Action::Get, "other-tenant", None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn internal_subject_matching_requires_prefix_and_context() {
+        let authorizer = authorizer();
+        let matched = authorizer
+            .match_internal_subject("internal.jobs.sync")
+            .expect("internal context");
+        assert_eq!(matched.subject, "subject-1");
+        assert!(
+            authorizer
+                .match_internal_subject("public.jobs.sync")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn decode_ed25519_key_roundtrips_urlsafe_base64() {
+        let raw = vec![7u8; 32];
+        let encoded = URL_SAFE_NO_PAD.encode(&raw);
+        assert_eq!(decode_ed25519_key(&encoded).expect("decode"), raw);
+    }
 }

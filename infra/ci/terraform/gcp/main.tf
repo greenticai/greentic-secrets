@@ -61,4 +61,3 @@ resource "google_project_iam_binding" "secret_binding" {
   role    = google_project_iam_custom_role.secret_role.name
   members = ["serviceAccount:${google_service_account.ci.email}"]
 }
-

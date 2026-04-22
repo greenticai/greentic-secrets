@@ -151,6 +151,16 @@ fn apply_telemetry_env(telemetry: &TelemetryConfig) {
             std::env::set_var("OTEL_TRACES_EXPORTER", "otlp");
             std::env::set_var("OTEL_METRICS_EXPORTER", "otlp");
         },
+        TelemetryExporterKind::Gcp | TelemetryExporterKind::Azure | TelemetryExporterKind::Aws => {
+            warn!(
+                exporter = ?telemetry.exporter,
+                "provider-specific telemetry exporter is not handled yet; falling back to OTLP"
+            );
+            unsafe {
+                std::env::set_var("OTEL_TRACES_EXPORTER", "otlp");
+                std::env::set_var("OTEL_METRICS_EXPORTER", "otlp");
+            }
+        }
         TelemetryExporterKind::Stdout => unsafe {
             std::env::set_var("OTEL_TRACES_EXPORTER", "stdout");
             std::env::set_var("OTEL_METRICS_EXPORTER", "none");

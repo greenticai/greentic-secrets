@@ -38,3 +38,52 @@ pub fn split_prefix(prefix: Option<&str>) -> (Option<&str>, Option<&str>) {
         (category, name)
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_scope_normalizes_placeholder_team() {
+        let scope = build_scope("dev", "acme", Some("_")).expect("scope");
+        assert_eq!(scope.env(), "dev");
+        assert_eq!(scope.tenant(), "acme");
+        assert_eq!(scope.team(), None);
+    }
+
+    #[test]
+    fn build_uri_preserves_scope_and_segments() {
+        let scope = build_scope("dev", "acme", Some("core")).expect("scope");
+        let uri = build_uri(scope, "configs", "db").expect("uri");
+        assert_eq!(uri.to_string(), "secrets://dev/acme/core/configs/db");
+    }
+
+    #[test]
+    fn split_name_version_supports_optional_version() {
+        assert_eq!(
+            split_name_version("api-key@42").expect("versioned"),
+            ("api-key".to_string(), Some(42))
+        );
+        assert_eq!(
+            split_name_version("api-key").expect("unversioned"),
+            ("api-key".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn split_name_version_rejects_bad_versions() {
+        assert!(split_name_version("api-key@").is_err());
+        assert!(split_name_version("api-key@latest").is_err());
+    }
+
+    #[test]
+    fn split_prefix_handles_partial_values() {
+        assert_eq!(split_prefix(None), (None, None));
+        assert_eq!(
+            split_prefix(Some("configs/db")),
+            (Some("configs"), Some("db"))
+        );
+        assert_eq!(split_prefix(Some("configs/")), (Some("configs"), None));
+        assert_eq!(split_prefix(Some("/db")), (None, Some("db")));
+    }
+}

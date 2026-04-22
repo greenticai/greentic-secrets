@@ -338,21 +338,20 @@ mod suite {
                 })
             }
             AzureAuthMode::Default => {
-                use azure_core::auth::TokenCredential;
-                use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
+                use azure_core::credentials::TokenCredential;
 
-                let credential = DefaultAzureCredential::create(TokenCredentialOptions::default())
-                    .map_err(|err| {
+                let credential =
+                    azure_identity::DeveloperToolsCredential::new(None).map_err(|err| {
                         format!(
-                            "Azure suite skipped: failed to build DefaultAzureCredential: {err}"
+                            "Azure suite skipped: failed to build developer tools credential: {err}"
                         )
                     })?;
                 let token = credential
-                    .get_token(&[creds.scope.as_str()])
+                    .get_token(&[creds.scope.as_str()], None)
                     .await
                     .map_err(|err| {
                         format!(
-                            "Azure suite skipped: failed to acquire token via DefaultAzureCredential: {err}"
+                            "Azure suite skipped: failed to acquire token via developer tools credential: {err}"
                         )
                     })?;
                 let expires = token.expires_on;

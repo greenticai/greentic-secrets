@@ -3,10 +3,6 @@ components:
     version: "__PACK_VERSION__"
     source: oci
     uri: ghcr.io/greenticai/components/greentic.secrets.provider.vault_kv:__PACK_VERSION__
-  - id: greentic.secrets.generators
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greenticai/components/greentic.secrets.generators:__PACK_VERSION__
   - id: greentic.secrets.audit_exporter
     version: "__PACK_VERSION__"
     source: oci

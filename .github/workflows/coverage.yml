@@ -1,46 +1,40 @@
-name: Test Coverage
+name: Nightly Coverage
 
 on:
-  push:
-    branches:
-      - main
-      - main
-  pull_request:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   coverage:
-    if: false  # temporarily disabled: tarpaulin consumes too much disk space on hosted runners
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.91.1
+        uses: dtolnay/rust-toolchain@master
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
 
-      - name: Run coverage
-        run: |
-          cargo tarpaulin \
-            --workspace \
-            --all-features \
-            --timeout 600 \
-            --out Lcov \
-            --output-dir coverage
+      - name: Install coverage tooling
+        run: cargo binstall -y cargo-llvm-cov cargo-nextest greentic-dev
 
-      - name: Upload coverage report
+      - name: Run workspace coverage
+        run: greentic-dev coverage
+
+      - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-lcov
-          path: coverage/
+          name: coverage-report
+          path: target/coverage/
           if-no-files-found: error

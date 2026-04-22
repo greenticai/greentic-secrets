@@ -7,30 +7,21 @@ on:
   pull_request:
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  semver-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: obi1kenobi/cargo-semver-checks-action@v2
-        with:
-          rust-toolchain: manual
+  ci:
+    uses: greenticai/.github/.github/workflows/pr-ci.yml@main
+    with:
+      variant: host
 
-  fast:
+  reqwest-blocking-guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
-      - run: cargo build --workspace --all-features
-      - run: RUST_BACKTRACE=1 cargo test --workspace --all-features -- --nocapture
       - name: Deny reqwest::blocking in Vault provider
         run: |
           if git grep -n "reqwest::blocking" -- providers/greentic-vault-kv >/dev/null; then
@@ -46,7 +37,9 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
 
       - if: matrix.provider == 'k8s'
         name: Start KinD

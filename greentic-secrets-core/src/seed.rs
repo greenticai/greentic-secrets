@@ -12,6 +12,7 @@ use greentic_types::secrets::{SecretFormat, SecretRequirement, SecretScope};
 #[cfg(feature = "schema-validate")]
 use jsonschema::validator_for;
 use reqwest::Client;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Minimal dev context used for resolving requirement keys into URIs.
@@ -91,9 +92,10 @@ pub async fn apply_seed<S: SecretsStore + ?Sized>(
 ) -> ApplyReport {
     let mut ok = 0usize;
     let mut failed = Vec::new();
+    let requirement_lookup = options.requirements.map(RequirementLookup::new);
 
     for entry in &seed.entries {
-        if let Err(err) = validate_entry(entry, &options) {
+        if let Err(err) = validate_entry(entry, &options, requirement_lookup.as_ref()) {
             failed.push(ApplyFailure {
                 uri: entry.uri.clone(),
                 error: err.to_string(),
@@ -148,29 +150,86 @@ fn normalize_seed_entry(entry: &SeedEntry) -> Result<NormalizedSeedEntry> {
     })
 }
 
-fn validate_entry(entry: &SeedEntry, options: &ApplyOptions<'_>) -> Result<()> {
+fn validate_entry(
+    entry: &SeedEntry,
+    options: &ApplyOptions<'_>,
+    requirement_lookup: Option<&RequirementLookup<'_>>,
+) -> Result<()> {
     let uri = SecretUri::parse(&entry.uri)?;
 
     if let Some(reqs) = options.requirements {
         #[cfg(feature = "schema-validate")]
         if options.validate_schema
-            && let Some(req) = find_requirement(&uri, reqs)
+            && let Some(req) = find_requirement(&uri, reqs, requirement_lookup)
             && let (SecretFormat::Json, Some(schema), SeedValue::Json { json }) =
                 (&entry.format, &req.schema, &entry.value)
         {
             validate_json_schema(json, schema)?;
         }
         #[cfg(not(feature = "schema-validate"))]
-        let _ = find_requirement(&uri, reqs);
+        let _ = find_requirement(&uri, reqs, requirement_lookup);
     }
 
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct IndexedRequirement<'a> {
+    position: usize,
+    requirement: &'a SecretRequirement,
+}
+
+struct RequirementLookup<'a> {
+    explicit: HashMap<String, Vec<IndexedRequirement<'a>>>,
+    implicit: HashMap<String, Vec<IndexedRequirement<'a>>>,
+}
+
+impl<'a> RequirementLookup<'a> {
+    fn new(requirements: &'a [SecretRequirement]) -> Self {
+        let mut explicit = HashMap::new();
+        let mut implicit = HashMap::new();
+
+        for (position, requirement) in requirements.iter().enumerate() {
+            let entry = IndexedRequirement {
+                position,
+                requirement,
+            };
+            let key = requirement.key.as_str().to_ascii_lowercase();
+            if key.contains('/') {
+                explicit.entry(key).or_insert_with(Vec::new).push(entry);
+            } else {
+                implicit.entry(key).or_insert_with(Vec::new).push(entry);
+            }
+        }
+
+        Self { explicit, implicit }
+    }
+
+    fn find(&self, uri: &SecretUri) -> Option<&'a SecretRequirement> {
+        let explicit = self
+            .explicit
+            .get(&format!("{}/{}", uri.category(), uri.name()))
+            .into_iter()
+            .flatten();
+        let implicit = self.implicit.get(uri.name()).into_iter().flatten();
+
+        explicit
+            .chain(implicit)
+            .filter(|entry| scopes_match(uri.scope(), entry.requirement.scope.as_ref()))
+            .min_by_key(|entry| entry.position)
+            .map(|entry| entry.requirement)
+    }
+}
+
 fn find_requirement<'a>(
     uri: &SecretUri,
     requirements: &'a [SecretRequirement],
+    requirement_lookup: Option<&RequirementLookup<'a>>,
 ) -> Option<&'a SecretRequirement> {
+    if let Some(lookup) = requirement_lookup {
+        return lookup.find(uri);
+    }
+
     let key = format!("{}/{}", uri.category(), uri.name());
     requirements.iter().find(|req| {
         normalize_req_key(req.key.as_str(), uri.category()) == key
@@ -193,7 +252,7 @@ fn scopes_match(uri_scope: &greentic_secrets_spec::Scope, req_scope: Option<&Sec
     };
     uri_scope.env() == req_scope.env
         && uri_scope.tenant() == req_scope.tenant
-        && uri_scope.team().map(|t| t.to_string()) == req_scope.team
+        && uri_scope.team() == req_scope.team.as_deref()
 }
 
 #[cfg(feature = "schema-validate")]
@@ -470,6 +529,7 @@ impl SecretsStore for DevStore {
 mod tests {
     use super::*;
     use greentic_secrets_spec::SeedValue;
+    use reqwest::Client;
     use tempfile::tempdir;
 
     #[test]
@@ -521,5 +581,75 @@ mod tests {
 
         let fetched = store.get("secrets://dev/acme/_/configs/db").await.unwrap();
         assert_eq!(fetched, b"secret".to_vec());
+    }
+
+    #[test]
+    fn normalize_seed_entry_supports_json_and_rejects_mismatches() {
+        let json_entry = SeedEntry {
+            uri: "secrets://dev/acme/_/configs/app".into(),
+            format: SecretFormat::Json,
+            description: Some("json".into()),
+            value: SeedValue::Json {
+                json: serde_json::json!({"enabled": true}),
+            },
+        };
+        let normalized = normalize_seed_entry(&json_entry).expect("normalized");
+        assert_eq!(normalized.bytes, br#"{"enabled":true}"#);
+
+        let bad_entry = SeedEntry {
+            uri: "secrets://dev/acme/_/configs/app".into(),
+            format: SecretFormat::Bytes,
+            description: None,
+            value: SeedValue::Text {
+                text: "wrong".into(),
+            },
+        };
+        assert!(normalize_seed_entry(&bad_entry).is_err());
+    }
+
+    #[test]
+    fn find_requirement_matches_normalized_key_and_scope() {
+        let uri = SecretUri::parse("secrets://dev/acme/core/configs/db").expect("uri");
+        let mut req = SecretRequirement::default();
+        req.key = "DB".into();
+        req.scope = Some(SecretScope {
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: Some("core".into()),
+        });
+        let requirements = [req];
+
+        let found = find_requirement(&uri, &requirements, None).expect("requirement");
+        assert_eq!(found.key.as_str(), "DB");
+    }
+
+    #[test]
+    fn scopes_match_requires_team_when_present() {
+        let uri = SecretUri::parse("secrets://dev/acme/core/configs/db").expect("uri");
+        let matching = SecretScope {
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: Some("core".into()),
+        };
+        let mismatched = SecretScope {
+            env: "dev".into(),
+            tenant: "acme".into(),
+            team: Some("other".into()),
+        };
+
+        assert!(scopes_match(uri.scope(), Some(&matching)));
+        assert!(!scopes_match(uri.scope(), Some(&mismatched)));
+        assert!(scopes_match(uri.scope(), None));
+    }
+
+    #[test]
+    fn http_store_trims_trailing_slashes() {
+        let store = HttpStore::with_client(
+            Client::new(),
+            "https://broker.example.test/",
+            Some("token".into()),
+        );
+        assert_eq!(store.base_url, "https://broker.example.test");
+        assert_eq!(store.token.as_deref(), Some("token"));
     }
 }

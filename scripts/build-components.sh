@@ -88,12 +88,14 @@ for comp in "${components[@]}"; do
     echo "  [ERROR] wasm artifact missing at ${wasm_path}" >&2
     exit 1
   fi
-  cp "${wasm_path}" "${OUT_DIR}/${package_name}.wasm"
+  local_path="${OUT_DIR}/${package_name}.wasm"
+  cp "${wasm_path}" "${local_path}"
   content_digest="$(sha256sum "${wasm_path}" | awk '{print $1}')"
   ref="${REGISTRY_NAMESPACE}/${registry_name}:${VERSION}"
+  local_ref="file://${local_path}"
   tmp="$(mktemp)"
-  jq --arg id "${component_id}" --arg version "${VERSION}" --arg ref "${ref}" --arg digest "${content_digest}" --arg path "${package_name}.wasm" \
-    '. += [{"id":$id,"version":$version,"ref":$ref,"content_digest":$digest,"path":$path}]' \
+  jq --arg id "${component_id}" --arg version "${VERSION}" --arg ref "${ref}" --arg digest "${content_digest}" --arg path "${package_name}.wasm" --arg local_ref "${local_ref}" \
+    '. += [{"id":$id,"version":$version,"ref":$ref,"local_ref":$local_ref,"content_digest":$digest,"path":$path}]' \
     "${digests_json}" > "${tmp}"
   mv "${tmp}" "${digests_json}"
   echo "  built ${package_name}.wasm as ${component_id} content digest ${content_digest}"

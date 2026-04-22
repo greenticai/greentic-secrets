@@ -1,0 +1,30 @@
+name: Perf (lightweight)
+
+on:
+  # Moved off pull_request onto a nightly schedule per
+  # plans/binary-bifurcation.md Phase A.4 lighter-PR-CI goal.
+  schedule:
+    # 04:47 UTC — staggered against sibling Wave 1 nightly jobs.
+    - cron: "35 3 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run perf guard tests
+        run: cargo test -p greentic-secrets-core --test perf_scaling --test perf_timeout
+
+      - name: Run benchmarks (smoke)
+        run: cargo bench -p greentic-secrets-core --bench perf -- --sample-size 10

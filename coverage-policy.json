@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "global": {
+    "line_coverage_min": 60.0
+  },
+  "defaults": {
+    "per_file_line_coverage_min": 60.0
+  },
+  "exclusions": {
+    "files": [
+      "components/secrets-provider-aws-sm/src/lib.rs",
+      "components/secrets-provider-azure-kv/src/lib.rs",
+      "components/secrets-provider-gcp-sm/src/lib.rs",
+      "components/secrets-provider-k8s/src/lib.rs",
+      "components/secrets-provider-vault-kv/src/lib.rs",
+      "conformance/src/lib.rs",
+      "conformance/src/main.rs",
+      "conformance/src/util/executor_bridge.rs",
+      "crates/greentic-secrets-runner/src/bin/validate_gtpack_extension.rs",
+      "crates/greentic-secrets-test/src/lib.rs",
+      "crates/greentic-secrets-test/src/bin/manifest_inspect.rs",
+      "crates/greentic-secrets-test/src/main.rs",
+      "crates/greentic-secrets/src/admin.rs",
+      "crates/greentic-secrets/src/main.rs",
+      "crates/secrets-provider-tests/src/assertions.rs",
+      "crates/secrets-provider-tests/src/capabilities.rs",
+      "crates/secrets-provider-tests/src/contract.rs",
+      "crates/secrets-provider-tests/src/env.rs",
+      "crates/secrets-provider-tests/src/fixtures.rs",
+      "crates/secrets-provider-tests/src/retry.rs",
+      "crates/secrets-provider-tests/src/suite.rs",
+      "greentic-secrets-broker/src/config.rs",
+      "greentic-secrets-broker/src/http.rs",
+      "greentic-secrets-broker/src/lib.rs",
+      "greentic-secrets-broker/src/main.rs",
+      "greentic-secrets-broker/src/nats.rs",
+      "greentic-secrets-core/src/backend/aws.rs",
+      "greentic-secrets-core/src/backend/azure.rs",
+      "greentic-secrets-core/src/backend/gcp.rs",
+      "greentic-secrets-core/src/backend/k8s.rs",
+      "greentic-secrets-core/src/http.rs",
+      "greentic-secrets-core/src/provider.rs",
+      "greentic-secrets-core/src/rt.rs",
+      "greentic-secrets-lib/src/env.rs",
+      "greentic-secrets-spec/src/backend.rs",
+      "greentic-secrets-spec/src/key_provider.rs",
+      "greentic-secrets-spec/src/result_ext.rs",
+      "providers/greentic-aws-sm/src/lib.rs",
+      "providers/greentic-azure-kv/src/auth.rs",
+      "providers/greentic-azure-kv/src/lib.rs",
+      "providers/greentic-gcp-sm/src/lib.rs",
+      "providers/greentic-k8s/src/lib.rs",
+      "providers/greentic-vault-kv/src/lib.rs"
+    ]
+  },
+  "per_file": {
+    "crates/greentic-secrets-pack-validator/src/lib.rs": {
+      "line_coverage_min": 80.0
+    },
+    "crates/greentic-secrets-validate/src/lib.rs": {
+      "line_coverage_min": 75.0
+    },
+    "greentic-secrets-broker/src/path.rs": {
+      "line_coverage_min": 80.0
+    },
+    "greentic-secrets-core/src/resolver.rs": {
+      "line_coverage_min": 70.0
+    },
+    "greentic-secrets-core/src/seed.rs": {
+      "line_coverage_min": 70.0
+    }
+  }
+}

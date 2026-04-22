@@ -1,0 +1,37 @@
+name: Nightly Semver Advisory
+
+# Advisory-mode cargo-semver-checks moved off pull_request (was part of ci.yml
+# as an inline job) onto a nightly schedule. See plans/binary-bifurcation.md
+# Phase A. The real semver gate remains at weekly-stable-prepare on the main
+# branch; this is the compass, not the gate.
+#
+# No explicit package filter — the workspace has 25 members, of which ~16 are
+# published to crates.io and ~8 carry `publish = false` (components, providers,
+# test harnesses). cargo-semver-checks auto-skips the unpublished ones.
+
+on:
+  schedule:
+    # 05:41 UTC — staggered from greentic-types (05:17),
+    # greentic-component (05:23), greentic-oauth (05:29), and
+    # serde-yaml-gtc (05:35).
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+    inputs:
+      baseline-rev:
+        description: "Optional explicit baseline git ref (default: latest vX.Y.Z tag)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-semver-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  advisory:
+    uses: greenticai/.github/.github/workflows/nightly-semver-advisory.yml@main
+    with:
+      semver-baseline-rev: ${{ inputs.baseline-rev || '' }}

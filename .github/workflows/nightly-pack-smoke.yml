@@ -1,0 +1,127 @@
+name: Nightly Pack Smoke
+# Moved off pull_request onto a nightly schedule per
+# plans/binary-bifurcation.md Phase A.4 lighter-PR-CI goal.
+# Manual runs remain available via workflow_dispatch.
+#
+# Gate + notify-failure pattern per plans/binary-bifurcation.md Phase A.7.
+
+on:
+  schedule:
+    # 03:56 UTC — inside the 03:00-03:59 UTC nightly window per A.7.2
+    # (custom/heavy nightlies 03:35-03:59).
+    - cron: "56 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.gate.outputs.should-run }}
+    steps:
+      - id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW: ${{ github.workflow }}
+          HEAD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          emit() {
+            local should_run="$1"
+            local reason="$2"
+            echo "should-run=${should_run}" >> "${GITHUB_OUTPUT}"
+            {
+              echo "## Nightly gate"
+              echo ""
+              echo "- **Event:** \`${EVENT_NAME}\`"
+              echo "- **Workflow:** \`${WORKFLOW}\`"
+              echo "- **HEAD:** \`${HEAD_SHA}\`"
+              echo "- **Decision:** \`${should_run}\` — ${reason}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            echo "gate: should-run=${should_run} (${reason})"
+          }
+
+          if [ "${EVENT_NAME}" != "schedule" ]; then
+            emit true "non-schedule event (${EVENT_NAME:-unknown}) always runs"
+            exit 0
+          fi
+
+          last_sha=$(gh run list \
+            --repo "${REPO}" \
+            --workflow "${WORKFLOW}" \
+            --status success \
+            --event schedule \
+            --limit 1 \
+            --json headSha \
+            --jq '.[0].headSha // ""' 2>/dev/null || echo "")
+
+          if [ -z "${last_sha}" ]; then
+            emit true "no prior successful scheduled run — establishing baseline"
+            exit 0
+          fi
+
+          if [ "${last_sha}" = "${HEAD_SHA}" ]; then
+            emit false "unchanged since last successful scheduled run (${last_sha})"
+            exit 0
+          fi
+
+          emit true "changed since last successful scheduled run (${last_sha} → ${HEAD_SHA})"
+
+  secrets-pack-dry-run:
+    needs: gate
+    if: needs.gate.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+      - name: Install greentic-pack + greentic-provision
+        run: |
+          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
+          cargo install cargo-binstall --locked
+          cargo binstall -y greentic-provision
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -z "${GHCR_TOKEN:-}" ]]; then
+            echo "GHCR_TOKEN is required for provider-pack build (private component pulls)." >&2
+            exit 1
+          fi
+          user="${GHCR_USER:-${GITHUB_ACTOR}}"
+          echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
+      - name: Build provider packs
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          PACK_OFFLINE: "0"
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: ./scripts/build-provider-packs.sh
+      - name: Validate provisioning fixtures
+        run: ./scripts/validate-provision-fixtures.sh
+      - name: Run secrets pack conformance (dry-run)
+        run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
+
+  notify-failure:
+    needs: [gate, secrets-pack-dry-run]
+    if: failure() && github.event_name == 'schedule'
+    uses: greenticai/.github/.github/workflows/notify-failure.yml@main
+    with:
+      workflow-name: nightly-pack-smoke
+      repo: ${{ github.repository }}
+      step: secrets-pack-dry-run
+      error: "Nightly secrets pack dry-run failed — provider-pack build or conformance regressed."
+    secrets: inherit
