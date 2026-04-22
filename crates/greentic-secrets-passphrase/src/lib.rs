@@ -12,7 +12,7 @@ pub mod secret_bytes;
 pub mod source;
 
 // Re-exports — uncommented as each symbol is defined in subsequent tasks.
-// pub use error::PassphraseError;
+pub use error::PassphraseError;
 // pub use header::{EncryptedHeader, KdfParams, peek_header};
 // pub use kdf::{derive_master_key, random_salt};
 // pub use prompt::{PromptMode, prompt_passphrase};
