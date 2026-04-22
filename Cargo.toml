@@ -14,6 +14,7 @@ members = [
     "greentic-secrets-lib",
     "conformance",
     "crates/greentic-secrets",
+    "crates/greentic-secrets-cli",
     "crates/greentic-secrets-passphrase",
     "crates/greentic-secrets-pack-validator",
     "crates/greentic-secrets-runner",
