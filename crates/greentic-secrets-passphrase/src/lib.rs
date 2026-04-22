@@ -18,7 +18,7 @@ pub use kdf::{derive_master_key, random_salt};
 pub use prompt::{PromptMode, prompt_passphrase};
 pub use secret_bytes::MasterKey;
 // pub use secrecy::SecretString;
-// pub use source::{read_passphrase_from_file, read_passphrase_from_stdin};
+pub use source::{read_passphrase_from_file, read_passphrase_from_stdin};
 
 /// Minimum passphrase length enforced by `PromptMode::Initial`.
 pub const MIN_PASSPHRASE_LENGTH: usize = 12;
