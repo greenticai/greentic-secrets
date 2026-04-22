@@ -1,4 +1,10 @@
 //! AES-256-GCM key provider keyed by an Argon2id-derived master key.
+//!
+//! `#[allow(deprecated)]` is applied because aes-gcm 0.10's `Key::from_slice`
+//! and `Nonce::from_slice` re-export `GenericArray` methods deprecated in
+//! generic-array 1.x. The aes-gcm 0.11 release (still RC at time of writing)
+//! drops these. Remove the allow when the workspace bumps to aes-gcm 0.11.
+#![allow(deprecated)]
 
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, KeyInit, OsRng};

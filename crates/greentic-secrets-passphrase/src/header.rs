@@ -117,7 +117,7 @@ pub fn parse(input: &[u8]) -> Result<(EncryptedHeader, Vec<u8>)> {
 
     let mut body_lines: Vec<_> = lines.collect();
     // Remove empty final element if present (result of trailing newline in input)
-    if body_lines.last().map_or(false, |l| l.is_empty()) {
+    if body_lines.last().is_some_and(|l| l.is_empty()) {
         body_lines.pop();
     }
 
