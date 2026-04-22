@@ -10,7 +10,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-ALLOWED='^(aes|aes-gcm|argon2|chacha20|chacha20poly1305|getrandom|hkdf|hmac|password-hash|poly1305|rsa|secrecy|sha2|sha3|subtle|x25519-dalek|zeroize|zeroize_derive|rpassword|cipher|crypto-common|aead|digest|generic-array|block-buffer|universal-hash|opaque-debug|ghash|polyval|inout|ed25519|ed25519-dalek|p256|p384|curve25519-dalek|signature|spki|der|pkcs8|pkcs1|sec1|elliptic-curve|crypto-bigint|primeorder|rfc6979|ecdsa|group|ff|salsa20|scrypt|pbkdf2|blake2|merlin|cmac|cbc|ctr|gcm)$'
+# sha1 is included because aws-sdk uses it for AWS Sigv4 signing (HMAC-SHA1 fallback,
+# not directly used for collision-critical purposes). Reviewed and approved.
+ALLOWED='^(aes|aes-gcm|argon2|chacha20|chacha20poly1305|getrandom|hkdf|hmac|password-hash|poly1305|rsa|secrecy|sha1|sha2|sha3|subtle|x25519-dalek|zeroize|zeroize_derive|rpassword|cipher|crypto-common|aead|digest|generic-array|block-buffer|universal-hash|opaque-debug|ghash|polyval|inout|ed25519|ed25519-dalek|p256|p384|curve25519-dalek|signature|spki|der|pkcs8|pkcs1|sec1|elliptic-curve|crypto-bigint|primeorder|rfc6979|ecdsa|group|ff|salsa20|scrypt|pbkdf2|blake2|merlin|cmac|cbc|ctr|gcm)$'
 
 # Get all dependency crate names in the workspace (deduplicated).
 mapfile -t CRATES < <(cargo tree --workspace --prefix none --no-dedupe \
