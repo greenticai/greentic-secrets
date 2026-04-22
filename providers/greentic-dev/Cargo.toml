@@ -18,18 +18,21 @@ integration = []
 name = "secrets_provider_dev"
 
 [dependencies]
+aes-gcm = { workspace = true }
+async-trait = { workspace = true }
 base64 = { workspace = true }
 fs2 = { workspace = true }
-parking_lot = { workspace = true }
-async-trait = { workspace = true }
+greentic-secrets-passphrase = { path = "../../crates/greentic-secrets-passphrase" }
 greentic_secrets_spec = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-secrets-provider-tests = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-async-trait = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
+secrets-provider-tests = { workspace = true }
+secrecy = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
