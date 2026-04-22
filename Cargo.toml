@@ -13,8 +13,12 @@ members = [
     "greentic-secrets-broker",
     "greentic-secrets-lib",
     "conformance",
+    "crates/greentic-secrets",
+    "crates/greentic-secrets-passphrase",
+    "crates/greentic-secrets-pack-validator",
     "crates/greentic-secrets-runner",
     "crates/greentic-secrets-test",
+    "crates/greentic-secrets-validate",
     "crates/secrets-provider-tests",
     "providers/greentic-dev",
     "providers/greentic-aws-sm",
@@ -22,9 +26,6 @@ members = [
     "providers/greentic-azure-kv",
     "providers/greentic-k8s",
     "providers/greentic-vault-kv",
-    "crates/greentic-secrets",
-    "crates/greentic-secrets-validate",
-    "crates/greentic-secrets-pack-validator",
 ]
 resolver = "2"
 

@@ -1,0 +1,28 @@
+[package]
+name = "greentic-secrets-passphrase"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Passphrase-based key derivation and prompts for Greentic secrets."
+repository = "https://github.com/greenticai/greentic-secrets"
+readme = "README.md"
+documentation = "https://docs.rs/greentic-secrets-passphrase"
+keywords = ["secrets", "greentic", "argon2", "kdf"]
+categories = ["cryptography", "authentication"]
+include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
+
+[lib]
+name = "greentic_secrets_passphrase"
+
+[dependencies]
+argon2 = { workspace = true }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+rpassword = { workspace = true }
+secrecy = { version = "0.10", default-features = false }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
