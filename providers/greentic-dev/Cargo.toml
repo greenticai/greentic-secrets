@@ -35,4 +35,5 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 secrets-provider-tests = { workspace = true }
 secrecy = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

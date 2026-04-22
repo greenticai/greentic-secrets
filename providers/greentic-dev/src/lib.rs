@@ -4,6 +4,7 @@
 
 mod backend;
 mod dev_provider;
+mod marker;
 mod passphrase_provider;
 mod persistence;
 mod state;
