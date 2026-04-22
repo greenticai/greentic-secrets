@@ -502,7 +502,7 @@ impl DevStore {
     pub fn with_path(path: impl Into<std::path::PathBuf>) -> Result<Self> {
         use greentic_secrets_provider_dev::{DevBackend, DevKeyProvider};
 
-        let backend = DevBackend::with_persistence(path.into())
+        let backend = DevBackend::with_persistence_plaintext(path.into())
             .map_err(|err| Error::Backend(err.to_string()))?;
         let key_provider: Box<dyn KeyProvider> = Box::new(DevKeyProvider::from_env());
         let crypto = EnvelopeService::from_env(key_provider)?;

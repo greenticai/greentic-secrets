@@ -56,9 +56,20 @@ impl Persistence {
         provider: Option<Arc<dyn KeyProvider>>,
         allow_downgrade: bool,
     ) -> Result<(LoadedState, Self)> {
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| Error::Storage(e.to_string()))?;
+        }
         let raw = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .write(true)
+                    .open(&path)
+                    .map_err(|e| Error::Storage(e.to_string()))?;
                 return Ok((
                     LoadedState::Legacy {
                         state: State::default(),
