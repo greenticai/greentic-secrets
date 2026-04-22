@@ -14,7 +14,7 @@ on:
     # 05:41 UTC — staggered from greentic-types (05:17),
     # greentic-component (05:23), greentic-oauth (05:29), and
     # serde-yaml-gtc (05:35).
-    - cron: "41 5 * * *"
+    - cron: "47 3 * * *"
   workflow_dispatch:
     inputs:
       baseline-rev:

@@ -5,7 +5,7 @@ on:
   # plans/binary-bifurcation.md Phase A.4 lighter-PR-CI goal.
   schedule:
     # 04:47 UTC — staggered against sibling Wave 1 nightly jobs.
-    - cron: "47 4 * * *"
+    - cron: "35 3 * * *"
   push:
     branches: [main]
   workflow_dispatch:
