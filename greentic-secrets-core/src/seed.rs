@@ -511,6 +511,29 @@ impl DevStore {
             inner: BrokerStore::new(broker),
         })
     }
+
+    /// Open a dev store whose backend persists in encrypted v1 format.
+    ///
+    /// The provided `PassphraseKeyProvider` (built from a passphrase via
+    /// `greentic_secrets_passphrase::derive_master_key`) is used to wrap
+    /// the on-disk DEK. Records inside the store are still envelope-
+    /// encrypted by the crypto service in front of the backend.
+    pub fn with_path_encrypted(
+        path: impl Into<std::path::PathBuf>,
+        provider: std::sync::Arc<greentic_secrets_provider_dev::PassphraseKeyProvider>,
+        allow_downgrade: bool,
+    ) -> Result<Self> {
+        use greentic_secrets_provider_dev::{DevBackend, DevKeyProvider};
+
+        let backend = DevBackend::with_persistence_encrypted(path.into(), provider, allow_downgrade)
+            .map_err(|err| Error::Backend(err.to_string()))?;
+        let key_provider: Box<dyn KeyProvider> = Box::new(DevKeyProvider::from_env());
+        let crypto = EnvelopeService::from_env(key_provider)?;
+        let broker = SecretsBroker::new(Box::new(backend) as Box<dyn SecretsBackend>, crypto);
+        Ok(Self {
+            inner: BrokerStore::new(broker),
+        })
+    }
 }
 
 #[cfg(feature = "dev-store")]
