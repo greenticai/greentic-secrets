@@ -16,7 +16,7 @@ pub use error::PassphraseError;
 // pub use header::{EncryptedHeader, KdfParams, peek_header};
 // pub use kdf::{derive_master_key, random_salt};
 // pub use prompt::{PromptMode, prompt_passphrase};
-// pub use secret_bytes::MasterKey;
+pub use secret_bytes::MasterKey;
 // pub use secrecy::SecretString;
 // pub use source::{read_passphrase_from_file, read_passphrase_from_stdin};
 
