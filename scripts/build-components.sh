@@ -23,6 +23,8 @@ PY
 
 components=(
   "components/secrets-audit-exporter|secrets-audit-exporter|greentic.secrets.audit_exporter|greentic.secrets.audit_exporter"
+  "components/secrets-generators|secrets-generators|greentic.secrets.generators|greentic.secrets.generators"
+  "components/secrets-policy-validator|secrets-policy-validator|greentic.secrets.policy_validator|greentic.secrets.policy_validator"
   "components/secrets-provider-inmemory|secrets-provider-inmemory|greentic.secrets.provider.inmemory|greentic.secrets.provider.inmemory"
   "components/secrets-provider-aws-sm|secrets-provider-aws-sm|greentic.secrets.provider.aws_sm|greentic.secrets.provider.aws_sm"
   "components/secrets-provider-azure-kv|secrets-provider-azure-kv|greentic.secrets.provider.azure_kv|greentic.secrets.provider.azure_kv"

@@ -67,3 +67,47 @@ jobs:
         run: |
           echo "local provider '${{ matrix.provider }}' failed" >&2
           exit 1
+
+  secrets-pack-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          targets: wasm32-wasip2
+      - name: Install greentic-pack + greentic-provision
+        run: |
+          cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
+          cargo install --locked --git https://github.com/greenticai/greentic-provision.git --rev 44f8696 greentic-provision
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Login to GHCR
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [[ -n "${GHCR_TOKEN:-}" ]]; then
+            user="${GHCR_USER}"
+            echo "${GHCR_TOKEN}" | oras login ghcr.io -u "${user}" --password-stdin
+          else
+            echo "::notice::GHCR_TOKEN not set, pack build will use locally-built components"
+          fi
+      - name: Build provider packs
+        env:
+          COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
+          PACK_OFFLINE: "0"
+          PACK_USE_LOCAL_COMPONENTS: auto
+          SKIP_DOCTOR: "1"
+        run: ./scripts/build-provider-packs.sh
+      - name: Validate provisioning fixtures
+        run: ./scripts/validate-provision-fixtures.sh
+      - name: Run secrets pack conformance (dry-run)
+        run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
+      - name: Run pack_validation integration tests
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GREENTIC_OCI_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GREENTIC_OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          RUST_BACKTRACE=1 cargo test -p greentic-secrets-runner --test pack_validation -- --ignored --nocapture

@@ -78,7 +78,7 @@ impl TestPrefix {
         let next = self
             .counter
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        format!("{}/{suffix}-{next}", self.base)
+        format!("{}-{suffix}-{next}", self.base)
     }
 
     /// Minimal JSON metadata used in debugging output.

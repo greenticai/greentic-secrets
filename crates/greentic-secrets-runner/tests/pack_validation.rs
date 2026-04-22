@@ -129,6 +129,7 @@ fn provider_packs_have_provider_core_extension_and_schemas() {
 }
 
 #[test]
+#[ignore = "integration test; requires greentic-pack in PATH (run with --ignored in secrets-pack-dry-run job)"]
 fn built_provider_gtpacks_embed_canonical_provider_extension() {
     if !has_command("greentic-pack") {
         eprintln!(
@@ -147,6 +148,7 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
             "VALIDATE_GTPACK_BIN",
             env!("CARGO_BIN_EXE_validate_gtpack_extension"),
         )
+        .env("SKIP_DOCTOR", "1")
         .output()
         .expect("spawn build-provider-packs.sh");
     if !output.status.success() {
@@ -291,6 +293,7 @@ fn built_provider_gtpacks_embed_canonical_provider_extension() {
 }
 
 #[test]
+#[ignore = "integration test; requires greentic-pack in PATH (run with --ignored in secrets-pack-dry-run job)"]
 fn minimal_fixture_pack_validates() {
     if !has_command("greentic-pack") {
         eprintln!("skipping minimal_fixture_pack_validates: greentic-pack is not installed");
