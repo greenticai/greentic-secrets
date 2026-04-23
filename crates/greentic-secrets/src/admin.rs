@@ -125,7 +125,7 @@ struct DevAdminClient {
 
 impl DevAdminClient {
     fn new(path: PathBuf) -> Result<Self> {
-        let backend = DevBackend::with_persistence(path)
+        let backend = DevBackend::with_persistence_plaintext(path)
             .map_err(|err| anyhow!("failed to open dev backend: {err}"))?;
         let key_provider: Box<dyn KeyProvider> = Box::new(DevKeyProvider::from_env());
         let crypto = EnvelopeService::from_env(key_provider)?;

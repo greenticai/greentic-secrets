@@ -29,6 +29,8 @@ pub enum Error {
     AlgorithmFeatureUnavailable(String),
     #[error("crypto error: {0}")]
     Crypto(String),
+    #[error("passphrase incorrect")]
+    InvalidPassphrase,
     #[error("storage error: {0}")]
     Storage(String),
     #[error("invalid {0}: {1}")]
@@ -54,3 +56,14 @@ pub enum DecryptError {
 /// Compatibility aliases preferred by downstream callers.
 pub type SecretsResult<T> = Result<T>;
 pub type SecretsError = Error;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_passphrase_message_is_stable() {
+        let err = Error::InvalidPassphrase;
+        assert_eq!(err.to_string(), "passphrase incorrect");
+    }
+}
