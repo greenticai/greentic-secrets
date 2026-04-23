@@ -36,12 +36,16 @@ pub fn resolve(source: PassphraseSource<'_>) -> Result<SecretString> {
         }
         PassphraseSource::Tty(mode) => match prompt_passphrase(mode) {
             Ok(p) => Ok(p),
-            Err(PassphraseError::TerminalIo(e))
-                if e.kind() == std::io::ErrorKind::NotFound
-                    || e.kind() == std::io::ErrorKind::Other =>
-            {
+            // Any I/O error from rpassword while opening the terminal
+            // means there is no usable TTY (no controlling terminal,
+            // stdin is a pipe / closed, ENXIO when /dev/tty is
+            // unreachable, etc.). Surface a single friendly message
+            // instead of leaking errno strings.
+            Err(PassphraseError::TerminalIo(_)) => {
                 bail!(
-                    "passphrase required but no TTY available; use --passphrase-stdin or --passphrase-file"
+                    "passphrase required but no interactive terminal is available; \
+                     use --passphrase-stdin (then pipe the passphrase on stdin) \
+                     or --passphrase-file <PATH> (mode 0600, owned by current user)"
                 );
             }
             Err(e) => Err(e.into()),
