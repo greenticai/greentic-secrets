@@ -25,10 +25,7 @@ impl VaultClient {
     }
 
     fn uri_for(&self, key: &str) -> SecretUri {
-        let safe = key
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-            .collect::<String>();
+        let safe = safe_key_fragment(key);
         let scope = Scope::new("int", "vault", None).unwrap();
         SecretUri::new(scope, "conformance", safe).unwrap()
     }
@@ -76,15 +73,22 @@ impl ProviderUnderTest for VaultClient {
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         let scope = Scope::new("int", "vault", None).unwrap();
         let items = self.backend.list(&scope, Some("conformance"), None)?;
+        let safe_prefix = safe_key_fragment(prefix);
         Ok(items
             .into_iter()
             .map(|item| item.uri.to_string())
-            .filter(|uri| uri.contains(prefix))
+            .filter(|uri| uri.contains(&safe_prefix))
             .collect())
     }
 }
 
-#[tokio::test(flavor = "current_thread")]
+fn safe_key_fragment(key: &str) -> String {
+    key.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "integration test; requires GREENTIC_INTEGRATION=1"]
 async fn conformance_vault() -> Result<()> {
     if std::env::var("GREENTIC_INTEGRATION").unwrap_or_default() != "1" {
