@@ -96,17 +96,21 @@ jobs:
       - name: Push packs to GHCR
         run: |
           set -euo pipefail
-          VERSION=$(cat dist/packs/VERSION)
+          VERSION=$(tr -d '[:space:]' < dist/packs/VERSION)
           REGISTRY_OWNER=${{ github.repository_owner }}
           for pack in dist/packs/secrets-*.gtpack; do
             name=$(basename "${pack}" .gtpack)
-            ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/${name}:${VERSION}"
-            oras push "${ref}" \
-              "${pack}:application/vnd.greentic.pack+zip"
-            echo "::notice::Pushed ${ref}"
+            provider="${name#secrets-}"
+            for tag in "${VERSION}" latest; do
+              ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/${provider}:${tag}"
+              oras push "${ref}" \
+                "${pack}:application/vnd.greentic.pack+zip"
+              echo "::notice::Pushed ${ref}"
+            done
           done
-          # Push bundle
-          bundle_ref="ghcr.io/${REGISTRY_OWNER}/greentic-packs/secrets-providers:${VERSION}"
-          oras push "${bundle_ref}" \
-            "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
-          echo "::notice::Pushed ${bundle_ref}"
+          for tag in "${VERSION}" latest; do
+            bundle_ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/providers:${tag}"
+            oras push "${bundle_ref}" \
+              "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
+            echo "::notice::Pushed ${bundle_ref}"
+          done

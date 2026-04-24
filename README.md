@@ -192,6 +192,22 @@ PREBUILD_COMPONENTS=0 bash scripts/build-provider-packs.sh
 SHARED_COMPONENT_FILTER=greentic.secrets.audit_exporter bash scripts/build-provider-packs.sh
 ```
 
+Published provider packs use both immutable version tags and `latest`:
+
+```bash
+ghcr.io/greenticai/packs/secrets/providers:<version>
+ghcr.io/greenticai/packs/secrets/providers:latest
+ghcr.io/greenticai/packs/secrets/aws-sm:<version>
+ghcr.io/greenticai/packs/secrets/aws-sm:latest
+```
+
+The publish workflows push each `dist/packs/secrets-<provider>.gtpack` artifact
+to `ghcr.io/<org>/packs/secrets/<provider>:<version>` and
+`ghcr.io/<org>/packs/secrets/<provider>:latest`. The
+`dist/packs/secrets-providers.gtpack` bundle is published as
+`ghcr.io/<org>/packs/secrets/providers:<version>` and
+`ghcr.io/<org>/packs/secrets/providers:latest`.
+
 ## Self-described secrets
 
 Libraries can publish their required secrets by implementing
