@@ -292,9 +292,26 @@ jobs:
           - bundle: secrets-providers.gtpack
           EOF
       - name: Push packs to GHCR
-        env:
-          REGISTRY_OWNER: ${{ github.repository_owner }}
-        run: ./scripts/publish-provider-packs.sh
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d '[:space:]' < dist/packs/VERSION)
+          REGISTRY_OWNER=${{ github.repository_owner }}
+          for pack in dist/packs/secrets-*.gtpack; do
+            name=$(basename "${pack}" .gtpack)
+            provider="${name#secrets-}"
+            for tag in "${VERSION}" latest; do
+              ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/${provider}:${tag}"
+              oras push "${ref}" \
+                "${pack}:application/vnd.greentic.pack+zip"
+              echo "::notice::Pushed ${ref}"
+            done
+          done
+          for tag in "${VERSION}" latest; do
+            bundle_ref="ghcr.io/${REGISTRY_OWNER}/packs/secrets/providers:${tag}"
+            oras push "${bundle_ref}" \
+              "dist/packs/secrets-providers.gtpack:application/vnd.greentic.pack+zip"
+            echo "::notice::Pushed ${bundle_ref}"
+          done
 
   build-and-push-validators:
     needs: [lint, test]
