@@ -114,14 +114,3 @@ jobs:
         run: ./scripts/validate-provision-fixtures.sh
       - name: Run secrets pack conformance (dry-run)
         run: cargo run -p greentic-secrets-test --bin greentic-secrets-test -- e2e --packs dist/packs --timeout-secs 20
-
-  notify-failure:
-    needs: [gate, secrets-pack-dry-run]
-    if: failure() && github.event_name == 'schedule'
-    uses: greenticai/.github/.github/workflows/notify-failure.yml@main
-    with:
-      workflow-name: nightly-pack-smoke
-      repo: ${{ github.repository }}
-      step: secrets-pack-dry-run
-      error: "Nightly secrets pack dry-run failed — provider-pack build or conformance regressed."
-    secrets: inherit
