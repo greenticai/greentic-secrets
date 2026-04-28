@@ -7,7 +7,3 @@ components:
     version: "__PACK_VERSION__"
     source: oci
     uri: ghcr.io/greenticai/components/greentic.secrets.audit_exporter:__PACK_VERSION__
-  - id: greentic.secrets.policy_validator
-    version: "__PACK_VERSION__"
-    source: oci
-    uri: ghcr.io/greenticai/components/greentic.secrets.policy_validator:__PACK_VERSION__
