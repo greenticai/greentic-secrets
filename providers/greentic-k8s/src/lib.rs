@@ -242,7 +242,7 @@ impl SecretsBackend for K8sSecretsBackend {
             return Ok(None);
         }
 
-        for snapshot in versions.into_iter().rev() {
+        if let Some(snapshot) = versions.into_iter().next_back() {
             if snapshot.deleted {
                 return Ok(None);
             }
@@ -755,10 +755,8 @@ fn sanitize_label(value: &str) -> String {
         match ch {
             'a'..='z' | '0'..='9' => label.push(ch),
             'A'..='Z' => label.push(ch.to_ascii_lowercase()),
-            '-' | '_' | '.' | '/' => {
-                if !label.ends_with('-') {
-                    label.push('-');
-                }
+            '-' | '_' | '.' | '/' if !label.ends_with('-') => {
+                label.push('-');
             }
             _ => {}
         }
