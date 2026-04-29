@@ -22,6 +22,8 @@ jobs:
   # binary-only repos (no stable namespace to protect) and pure libraries.
   dev-prepare:
     uses: greenticai/.github/.github/workflows/dev-prepare.yml@main
+    with:
+      require-pre-release: true
 
   dev-binaries-greentic-secrets:
     needs: dev-prepare
@@ -35,7 +37,9 @@ jobs:
     uses: greenticai/.github/.github/workflows/dev-publish.yml@main
     with:
       version: ${{ needs.dev-prepare.outputs.version }}
-      crates: "greentic-secrets"
+      crates: "greentic-secrets-api greentic-secrets-spec greentic-secrets-provider-dev greentic-secrets-core greentic-secrets-provider-aws-sm greentic-secrets-provider-gcp-sm greentic-secrets-provider-azure-kv greentic-secrets-provider-k8s greentic-secrets-provider-vault-kv greentic-secrets-broker greentic-secrets-lib greentic-secrets"
       binary-version: ${{ needs.dev-prepare.outputs.binary-version }}
       binary-crates: "greentic-secrets"
+      dual-role-binary-crates: "greentic-secrets"
+      require-pre-release: true
     secrets: inherit
