@@ -34,7 +34,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
-version = "0.5.0"
+version = "0.6.0-dev.0"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -56,20 +56,14 @@ hex = "0.4"
 hkdf = "0.13"
 handlebars = "6"
 hyper = "1"
-jsonwebtoken = { version = "10", default-features = false }
 lru = "0.17"
 indexmap = "2"
 once_cell = "1"
 parking_lot = "0.12"
-rand = { version = "0.10", features = ["std"] }
-reqwest = { version = "0.13", default-features = false }
 ring = "0.17"
-rustls = { version = "0.23", default-features = false }
 schemars = "1"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_cbor = "0.11"
-serde_yaml = { package = "serde_yaml_gtc", version = "2" }
 serial_test = "3"
 sha2 = "0.11"
 semver = "1"
@@ -77,56 +71,263 @@ tempfile = "3"
 thiserror = "2"
 toml = "1"
 time = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
 tower = "0.5"
 tower-http = "0.6"
 tracing = "0.1"
 predicates = "3"
 jsonschema = "0.46"
-azure_identity = { package = "azure_identity", version = "0.34" }
-azure_security_keyvault_secrets = { package = "azure_security_keyvault_secrets", version = "0.13" }
 azure_core = "0.34"
 google-cloud-secretmanager-v1 = "1"
-k8s-openapi = { version = "0.27", default-features = false, features = ["v1_31"] }
-kube = { version = "3", default-features = false, features = ["client", "runtime", "derive", "rustls-tls"] }
 rustls-pemfile = "2"
-vaultrs = { version = "0.8", default-features = false, features = ["rustls"] }
-secrets-provider-inmemory = { version = "0.1", path = "components/secrets-provider-inmemory" }
-greentic-types = { version = "0.5", default-features = false, features = ["std", "serde", "telemetry-autoinit"] }
 url = "2"
 uuid = "1"
 wit-bindgen = "0.57"
-wasmtime = { version = "43", features = ["cranelift"] }
-wasmparser = { version = "0.247", default-features = false, features = ["component-model"] }
 wat = "1"
-zip = { version = "8", default-features = false }
-greentic_secrets_api = { package = "greentic-secrets-api", version = "0.5", path = "greentic-secrets-api" }
-greentic_secrets_spec = { package = "greentic-secrets-spec", version = "0.5", path = "greentic-secrets-spec" }
-greentic_secrets_core = { package = "greentic-secrets-core", version = "0.5", path = "greentic-secrets-core" }
-greentic_secrets_broker = { package = "greentic-secrets-broker", version = "0.5", path = "greentic-secrets-broker" }
-secrets_broker = { package = "greentic-secrets-broker", version = "0.5", path = "greentic-secrets-broker" }
-greentic_secrets_lib = { package = "greentic-secrets-lib", version = "0.5", path = "greentic-secrets-lib" }
-greentic_secrets_provider_dev = { package = "greentic-secrets-provider-dev", version = "0.5", path = "providers/greentic-dev" }
-greentic_secrets_provider_aws_sm = { package = "greentic-secrets-provider-aws-sm", version = "0.5", path = "providers/greentic-aws-sm" }
-greentic_secrets_provider_gcp_sm = { package = "greentic-secrets-provider-gcp-sm", version = "0.5", path = "providers/greentic-gcp-sm" }
-greentic_secrets_provider_azure_kv = { package = "greentic-secrets-provider-azure-kv", version = "0.5", path = "providers/greentic-azure-kv" }
-greentic_secrets_provider_k8s = { package = "greentic-secrets-provider-k8s", version = "0.5", path = "providers/greentic-k8s" }
-greentic_secrets_provider_vault_kv = { package = "greentic-secrets-provider-vault-kv", version = "0.5", path = "providers/greentic-vault-kv" }
-secrets-core = { package = "greentic-secrets-core", version = "0.5", path = "greentic-secrets-core" }
-secrets-provider-dev = { package = "greentic-secrets-provider-dev", version = "0.5", path = "providers/greentic-dev" }
-secrets-provider-aws-sm = { package = "greentic-secrets-provider-aws-sm", version = "0.5", path = "providers/greentic-aws-sm" }
-secrets-provider-gcp-sm = { package = "greentic-secrets-provider-gcp-sm", version = "0.5", path = "providers/greentic-gcp-sm" }
-secrets-provider-azure-kv = { package = "greentic-secrets-provider-azure-kv", version = "0.5", path = "providers/greentic-azure-kv" }
-secrets-provider-k8s = { package = "greentic-secrets-provider-k8s", version = "0.5", path = "providers/greentic-k8s" }
-secrets-provider-vault-kv = { package = "greentic-secrets-provider-vault-kv", version = "0.5", path = "providers/greentic-vault-kv" }
-greentic_secrets_provider_aws = { package = "greentic-secrets-provider-aws-sm", version = "0.5", path = "providers/greentic-aws-sm" }
-greentic_secrets_provider_azure = { package = "greentic-secrets-provider-azure-kv", version = "0.5", path = "providers/greentic-azure-kv" }
-greentic_secrets_provider_gcp = { package = "greentic-secrets-provider-gcp-sm", version = "0.5", path = "providers/greentic-gcp-sm" }
-greentic_secrets_provider_vault = { package = "greentic-secrets-provider-vault-kv", version = "0.5", path = "providers/greentic-vault-kv" }
-greentic_secrets_provider_dev_env = { package = "greentic-secrets-provider-dev", version = "0.5", path = "providers/greentic-dev" }
-secrets-provider-tests = { path = "crates/secrets-provider-tests" }
-greentic-config-types = { version = "0.5" }
-greentic-config = { version = "0.5" }
-greentic_types_validate = { package = "greentic-types", version = "0.5", default-features = false, features = ["serde", "std"] }
-greentic-interfaces = { version = "0.5", default-features = false, features = ["bindings-rust", "provider-core-v1"] }
-greentic-interfaces-wasmtime = { version = "0.5" }
+
+[workspace.dependencies.jsonwebtoken]
+version = "10"
+default-features = false
+
+[workspace.dependencies.rand]
+version = "0.10"
+features = [
+    "std",
+]
+
+[workspace.dependencies.reqwest]
+version = "0.13"
+default-features = false
+
+[workspace.dependencies.rustls]
+version = "0.23"
+default-features = false
+
+[workspace.dependencies.serde]
+version = "1"
+features = [
+    "derive",
+]
+
+[workspace.dependencies.serde_yaml]
+package = "serde_yaml_gtc"
+version = "2"
+
+[workspace.dependencies.tokio]
+version = "1"
+features = [
+    "rt-multi-thread",
+    "macros",
+    "signal",
+    "net",
+]
+
+[workspace.dependencies.azure_identity]
+package = "azure_identity"
+version = "0.34"
+
+[workspace.dependencies.azure_security_keyvault_secrets]
+package = "azure_security_keyvault_secrets"
+version = "0.13"
+
+[workspace.dependencies.k8s-openapi]
+version = "0.27"
+default-features = false
+features = [
+    "v1_31",
+]
+
+[workspace.dependencies.kube]
+version = "3"
+default-features = false
+features = [
+    "client",
+    "runtime",
+    "derive",
+    "rustls-tls",
+]
+
+[workspace.dependencies.vaultrs]
+version = "0.8"
+default-features = false
+features = [
+    "rustls",
+]
+
+[workspace.dependencies.secrets-provider-inmemory]
+version = "0.1"
+path = "components/secrets-provider-inmemory"
+
+[workspace.dependencies.greentic-types]
+version = ">=0.5, <0.7.0-0"
+default-features = false
+features = [
+    "std",
+    "serde",
+    "telemetry-autoinit",
+]
+
+[workspace.dependencies.wasmtime]
+version = "43"
+features = [
+    "cranelift",
+]
+
+[workspace.dependencies.wasmparser]
+version = "0.247"
+default-features = false
+features = [
+    "component-model",
+]
+
+[workspace.dependencies.zip]
+version = "8"
+default-features = false
+
+[workspace.dependencies.greentic_secrets_api]
+package = "greentic-secrets-api"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-api"
+
+[workspace.dependencies.greentic_secrets_spec]
+package = "greentic-secrets-spec"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-spec"
+
+[workspace.dependencies.greentic_secrets_core]
+package = "greentic-secrets-core"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-core"
+
+[workspace.dependencies.greentic_secrets_broker]
+package = "greentic-secrets-broker"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-broker"
+
+[workspace.dependencies.secrets_broker]
+package = "greentic-secrets-broker"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-broker"
+
+[workspace.dependencies.greentic_secrets_lib]
+package = "greentic-secrets-lib"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-lib"
+
+[workspace.dependencies.greentic_secrets_provider_dev]
+package = "greentic-secrets-provider-dev"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-dev"
+
+[workspace.dependencies.greentic_secrets_provider_aws_sm]
+package = "greentic-secrets-provider-aws-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-aws-sm"
+
+[workspace.dependencies.greentic_secrets_provider_gcp_sm]
+package = "greentic-secrets-provider-gcp-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-gcp-sm"
+
+[workspace.dependencies.greentic_secrets_provider_azure_kv]
+package = "greentic-secrets-provider-azure-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-azure-kv"
+
+[workspace.dependencies.greentic_secrets_provider_k8s]
+package = "greentic-secrets-provider-k8s"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-k8s"
+
+[workspace.dependencies.greentic_secrets_provider_vault_kv]
+package = "greentic-secrets-provider-vault-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-vault-kv"
+
+[workspace.dependencies.secrets-core]
+package = "greentic-secrets-core"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "greentic-secrets-core"
+
+[workspace.dependencies.secrets-provider-dev]
+package = "greentic-secrets-provider-dev"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-dev"
+
+[workspace.dependencies.secrets-provider-aws-sm]
+package = "greentic-secrets-provider-aws-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-aws-sm"
+
+[workspace.dependencies.secrets-provider-gcp-sm]
+package = "greentic-secrets-provider-gcp-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-gcp-sm"
+
+[workspace.dependencies.secrets-provider-azure-kv]
+package = "greentic-secrets-provider-azure-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-azure-kv"
+
+[workspace.dependencies.secrets-provider-k8s]
+package = "greentic-secrets-provider-k8s"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-k8s"
+
+[workspace.dependencies.secrets-provider-vault-kv]
+package = "greentic-secrets-provider-vault-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-vault-kv"
+
+[workspace.dependencies.greentic_secrets_provider_aws]
+package = "greentic-secrets-provider-aws-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-aws-sm"
+
+[workspace.dependencies.greentic_secrets_provider_azure]
+package = "greentic-secrets-provider-azure-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-azure-kv"
+
+[workspace.dependencies.greentic_secrets_provider_gcp]
+package = "greentic-secrets-provider-gcp-sm"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-gcp-sm"
+
+[workspace.dependencies.greentic_secrets_provider_vault]
+package = "greentic-secrets-provider-vault-kv"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-vault-kv"
+
+[workspace.dependencies.greentic_secrets_provider_dev_env]
+package = "greentic-secrets-provider-dev"
+version = ">=0.6.0-dev, <0.7.0-0"
+path = "providers/greentic-dev"
+
+[workspace.dependencies.secrets-provider-tests]
+path = "crates/secrets-provider-tests"
+
+[workspace.dependencies.greentic-config-types]
+version = ">=0.5, <0.7.0-0"
+
+[workspace.dependencies.greentic-config]
+version = ">=0.5, <0.7.0-0"
+
+[workspace.dependencies.greentic_types_validate]
+package = "greentic-types"
+version = ">=0.5, <0.7.0-0"
+default-features = false
+features = [
+    "serde",
+    "std",
+]
+
+[workspace.dependencies.greentic-interfaces]
+version = ">=0.5, <0.7.0-0"
+default-features = false
+features = [
+    "bindings-rust",
+    "provider-core-v1",
+]
+
+[workspace.dependencies.greentic-interfaces-wasmtime]
+version = ">=0.5, <0.7.0-0"
