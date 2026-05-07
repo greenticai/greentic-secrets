@@ -4,27 +4,7 @@ type: event
 entrypoints:
   default: {}
 nodes:
-  validate_config:
-    telemetry:
-      span: provider.breakglass.config
-    operation: validate_config
-    component.exec:
-      config: ${inputs.config}
-      schema_ref: assets/schemas/secrets/aws-sm/config.schema.json
-      component: greentic.secrets.policy_validator
-  authorize:
-    after: validate_config
-    telemetry:
-      span: provider.breakglass.authorize
-    operation: authorize_breakglass
-    component.exec:
-      actor: ${inputs.actor}
-      justification: ${inputs.justification}
-      ticket: ${inputs.ticket}
-      duration_ms: ${inputs.duration_ms}
-      component: greentic.secrets.policy_validator
   read_once:
-    after: authorize
     telemetry:
       span: provider.breakglass.read
       attributes:
