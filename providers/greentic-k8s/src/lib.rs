@@ -242,14 +242,14 @@ impl SecretsBackend for K8sSecretsBackend {
             return Ok(None);
         }
 
-        for snapshot in versions.into_iter().rev() {
-            if snapshot.deleted {
-                continue;
-            }
-            return snapshot.into_versioned();
+        // Tombstone semantics: the latest version determines visibility. If the
+        // newest write is a deletion, the secret is logically gone — do not fall
+        // back to older live versions.
+        match versions.into_iter().next_back() {
+            Some(snapshot) if snapshot.deleted => Ok(None),
+            Some(snapshot) => snapshot.into_versioned(),
+            None => Ok(None),
         }
-
-        Ok(None)
     }
 
     fn list(
