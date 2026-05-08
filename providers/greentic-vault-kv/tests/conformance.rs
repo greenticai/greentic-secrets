@@ -25,12 +25,10 @@ impl VaultClient {
     }
 
     fn uri_for(&self, key: &str) -> SecretUri {
-        let safe = key
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-            .collect::<String>();
+        // Keys produced by `TestPrefix::key` are already valid SecretUri name
+        // components (`[a-z0-9._-]+`) — no extra sanitization needed.
         let scope = Scope::new("int", "vault", None).unwrap();
-        SecretUri::new(scope, "conformance", safe).unwrap()
+        SecretUri::new(scope, "conformance", key.to_string()).unwrap()
     }
 
     fn record(&self, uri: SecretUri, value: Vec<u8>) -> SecretRecord {
