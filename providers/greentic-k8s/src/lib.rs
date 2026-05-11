@@ -131,7 +131,7 @@ impl K8sSecretsBackend {
 
     fn list_versions(&self, namespace: &str, key: &str) -> SecretsResult<Vec<SecretSnapshot>> {
         let mut snapshots = Vec::new();
-        let selector = format!("{LABEL_KEY}={key}");
+        let selector = format!("{LABEL_KEY}={}", label_safe_key(key));
         let selector = percent_encode(&selector);
         let mut continue_token: Option<String> = None;
 
@@ -242,14 +242,14 @@ impl SecretsBackend for K8sSecretsBackend {
             return Ok(None);
         }
 
-        if let Some(snapshot) = versions.into_iter().next_back() {
-            if snapshot.deleted {
-                return Ok(None);
-            }
-            return snapshot.into_versioned();
+        // Tombstone semantics: the latest version determines visibility. If the
+        // newest write is a deletion, the secret is logically gone — do not fall
+        // back to older live versions.
+        match versions.into_iter().next_back() {
+            Some(snapshot) if snapshot.deleted => Ok(None),
+            Some(snapshot) => snapshot.into_versioned(),
+            None => Ok(None),
         }
-
-        Ok(None)
     }
 
     fn list(
@@ -683,7 +683,10 @@ fn secret_manifest(
     deleted: bool,
 ) -> SecretsResult<Value> {
     let mut labels = Map::new();
-    labels.insert(LABEL_KEY.into(), Value::String(key.to_string()));
+    // The canonical key contains '/' separators and may exceed K8s' 63-char label
+    // value limit; hash it to a fixed, label-safe identifier. The same transform
+    // is applied on the read path in list_versions().
+    labels.insert(LABEL_KEY.into(), Value::String(label_safe_key(key)));
     labels.insert(LABEL_VERSION.into(), Value::String(version.to_string()));
     labels.insert(
         LABEL_ENV.into(),
@@ -822,6 +825,31 @@ fn percent_encode(value: &str) -> String {
     byte_serialize(value.as_bytes()).collect()
 }
 
+/// Hash the canonical storage key into a Kubernetes-label-safe identifier.
+///
+/// K8s label values must match `(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`
+/// and be at most 63 characters. The canonical storage key embeds slashes
+/// (e.g. `env/tenant/_/category/name`) and is unbounded in length, so it must
+/// be transformed before being used as the `greentic.ai/key` label value.
+/// Returns the lowercase hex of the first 16 bytes of SHA-256 (32 hex chars,
+/// 128 bits — collision-resistant in practice for label-selector lookups).
+fn label_safe_key(canonical: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    let digest = hasher.finalize();
+    hex_lower(&digest[..16])
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -845,6 +873,26 @@ mod tests {
         set_env("K8S_HTTP_TIMEOUT_SECS", "1");
         clear_env("K8S_BEARER_TOKEN_FILE");
         clear_env("K8S_CA_BUNDLE");
+    }
+
+    #[test]
+    fn label_safe_key_is_k8s_compliant() {
+        let canonical = "int/k8s/_/conformance/ci-k8s-25538788672-1-secret-0";
+        let value = label_safe_key(canonical);
+        assert_eq!(value.len(), 32);
+        assert!(value.len() <= 63, "must fit K8s label-value 63-char limit");
+        assert!(
+            value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
+            "must only contain K8s-label-safe chars: {value}"
+        );
+        assert!(
+            value.chars().next().unwrap().is_ascii_alphanumeric()
+                && value.chars().last().unwrap().is_ascii_alphanumeric(),
+            "must start and end with alphanumeric: {value}"
+        );
+        assert_eq!(label_safe_key(canonical), value, "must be deterministic");
     }
 
     #[tokio::test(flavor = "multi_thread")]

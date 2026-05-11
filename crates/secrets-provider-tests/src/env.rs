@@ -61,6 +61,10 @@ impl TestPrefix {
     }
 
     fn new(provider: &str, base: String) -> Self {
+        // The base flows directly into provider keys, which providers turn into
+        // SecretUri components (validated against `[a-z0-9._-]+`). Sanitize once
+        // here so every provider's wrapper sees an already-valid identifier.
+        let base = sanitize_segment(&base);
         Self {
             provider: provider.to_string(),
             base,
@@ -74,10 +78,14 @@ impl TestPrefix {
     }
 
     /// Derive a unique secret key for a test case.
+    ///
+    /// Uses `-` rather than `/` between segments so keys are valid as
+    /// `SecretUri` name components without further provider-side sanitization.
     pub fn key(&self, suffix: &str) -> String {
         let next = self
             .counter
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let suffix = sanitize_segment(suffix);
         format!("{}-{suffix}-{next}", self.base)
     }
 
@@ -88,6 +96,20 @@ impl TestPrefix {
             "prefix": self.base,
         })
     }
+}
+
+/// Replace any character outside the SecretUri component charset
+/// (`[a-z0-9._-]`) with `-`, lowercasing ASCII letters along the way.
+fn sanitize_segment(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            'a'..='z' | '0'..='9' | '-' | '_' | '.' => out.push(ch),
+            'A'..='Z' => out.push(ch.to_ascii_lowercase()),
+            _ => out.push('-'),
+        }
+    }
+    out
 }
 
 fn parse_bool_env_value(value: &str, default_true: bool) -> bool {
@@ -106,9 +128,16 @@ mod tests {
     #[test]
     fn builds_local_prefix_when_no_ci_env() {
         let prefix = TestPrefix::new("dev", "local/test/123".to_string());
-        assert!(prefix.base().starts_with("local/test/123"));
+        // Slashes get normalised to dashes so the base is a valid SecretUri segment.
+        assert_eq!(prefix.base(), "local-test-123");
         let k1 = prefix.key("a");
         let k2 = prefix.key("a");
         assert_ne!(k1, k2);
+        // Keys must contain only chars accepted by SecretUri name validation.
+        assert!(
+            k1.chars()
+                .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '-' | '_' | '.')),
+            "key contains invalid chars: {k1}"
+        );
     }
 }

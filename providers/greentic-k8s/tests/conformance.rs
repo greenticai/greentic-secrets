@@ -25,12 +25,10 @@ impl K8sClient {
     }
 
     fn uri_for(&self, key: &str) -> SecretUri {
-        let safe = key
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-            .collect::<String>();
+        // Keys produced by `TestPrefix::key` are already valid SecretUri name
+        // components (`[a-z0-9._-]+`) — no extra sanitization needed.
         let scope = Scope::new("int", "k8s", None).unwrap();
-        SecretUri::new(scope, "conformance", safe).unwrap()
+        SecretUri::new(scope, "conformance", key.to_string()).unwrap()
     }
 
     fn record(&self, uri: SecretUri, value: Vec<u8>) -> SecretRecord {
@@ -88,7 +86,7 @@ impl ProviderUnderTest for K8sClient {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "integration test; requires GREENTIC_INTEGRATION=1"]
 async fn conformance_k8s() -> Result<()> {
     if std::env::var("GREENTIC_INTEGRATION").unwrap_or_default() != "1" {

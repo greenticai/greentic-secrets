@@ -67,7 +67,7 @@ impl ProviderUnderTest for DevClient {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "integration test; requires GREENTIC_INTEGRATION=1"]
 async fn conformance_dev_backend() -> Result<()> {
     if std::env::var("GREENTIC_INTEGRATION").unwrap_or_default() != "1" {
