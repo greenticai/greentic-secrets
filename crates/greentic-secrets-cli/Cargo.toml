@@ -1,0 +1,19 @@
+[package]
+name = "greentic-secrets-cli"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+description = "Shared CLI helpers (passphrase resolution) for binaries that consume Greentic encrypted secrets."
+repository = "https://github.com/greenticai/greentic-secrets"
+readme = "README.md"
+documentation = "https://docs.rs/greentic-secrets-cli"
+keywords = ["secrets", "greentic", "cli", "passphrase"]
+categories = ["command-line-interface", "cryptography"]
+include = ["src/**", "README.md", "LICENSE", "Cargo.toml"]
+
+[lib]
+name = "greentic_secrets_cli"
+
+[dependencies]
+anyhow = { workspace = true }
+greentic-secrets-passphrase = { path = "../greentic-secrets-passphrase" }

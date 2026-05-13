@@ -113,6 +113,9 @@ impl From<secrets_core::Error> for AppError {
             secrets_core::Error::Storage(err)
             | secrets_core::Error::Crypto(err)
             | secrets_core::Error::Backend(err) => AppErrorKind::Internal(err),
+            secrets_core::Error::InvalidPassphrase => {
+                AppErrorKind::Internal("backend key material rejected ciphertext".to_string())
+            }
         };
         AppError::new(kind)
     }
