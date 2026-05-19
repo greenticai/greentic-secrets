@@ -50,8 +50,11 @@ struct PrintArgs {
 
 #[derive(Args)]
 struct CheckArgs {
-    /// Environment segment for the prefix (e.g. dev, prod)
-    #[arg(long, default_value = "dev")]
+    /// Environment segment for the prefix (e.g. local, prod). Defaults to
+    /// `local` per A4b — the legacy `dev` value is still accepted but
+    /// downstream consumers route it through the dev→local compat alias
+    /// in `greentic-setup` / `greentic-start`.
+    #[arg(long, default_value = "local")]
     env: String,
     /// Tenant segment for the prefix
     #[arg(long)]
