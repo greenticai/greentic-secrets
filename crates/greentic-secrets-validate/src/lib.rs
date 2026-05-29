@@ -355,6 +355,7 @@ mod tests {
         let mut manifest = base_manifest("vendor.demo.pack");
         let provider = ProviderDecl {
             provider_type: "demo".to_owned(),
+            provider_id: None,
             capabilities: Vec::new(),
             ops: Vec::new(),
             config_schema_ref: "assets/schemas/secrets/demo/config.schema.json".to_owned(),
