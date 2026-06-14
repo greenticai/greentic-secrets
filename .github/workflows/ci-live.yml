@@ -1,7 +1,5 @@
 name: CI Live Providers
 on:
-  pull_request:
-    types: [labeled, opened, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch:
@@ -23,7 +21,6 @@ jobs:
   aws:
     if: >
       (github.event_name == 'push') ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'live-cloud-tests')) ||
       (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
@@ -44,8 +41,9 @@ jobs:
         run: cargo run -p greentic-secrets-conformance --features provider-aws
 
   azure:
-    needs: [aws]
-    if: always()
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -72,8 +70,9 @@ jobs:
         run: cargo run -p greentic-secrets-conformance --features provider-azure
 
   gcp:
-    needs: [aws]
-    if: always()
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
