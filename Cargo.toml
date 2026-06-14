@@ -41,8 +41,8 @@ async-nats = "0.49"
 async-trait = "0.1"
 axum = "0.8"
 aws-config = "1"
-aws-sdk-kms = "1"
-aws-sdk-secretsmanager = "1"
+aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-smithy-types = "1"
 aws-types = "1"
 base64 = "0.22"

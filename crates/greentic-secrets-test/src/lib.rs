@@ -102,6 +102,8 @@ impl ProvisionRunner for GreenticProvisionRunner {
         answers: Option<&Path>,
         timeout: Duration,
     ) -> Result<Output> {
+        // The provision runner executes a configured binary path directly without a shell.
+        // foxguard: ignore[rs/no-command-injection]
         let mut cmd = Command::new(&self.bin);
         cmd.arg("dry-run")
             .arg("setup")
