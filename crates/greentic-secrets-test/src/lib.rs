@@ -5,6 +5,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use wasmtime::{Config, Engine, Instance, Module, Store};
@@ -1004,10 +1008,18 @@ fn execute_wasm_step(
     let mut store = Store::new(&engine, ());
 
     let engine_clone = engine.clone();
+    let done = Arc::new(AtomicBool::new(false));
+    let done_for_timeout = Arc::clone(&done);
     let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
     let epoch_handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(timeout_ms));
-        engine_clone.increment_epoch();
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        while !done_for_timeout.load(Ordering::Acquire) {
+            if Instant::now() >= deadline {
+                engine_clone.increment_epoch();
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     });
     store.set_epoch_deadline(1);
 
@@ -1030,9 +1042,11 @@ fn execute_wasm_step(
         .ok_or_else(|| anyhow!("missing run export"))?;
     let func = func.typed::<(i32, i32), (i32, i32)>(&store)?;
 
-    let (output_ptr, output_len) = func
+    let result = func
         .call(&mut store, (4096i32, input_bytes.len() as i32))
-        .map_err(|err| anyhow!("wasm trap: {err}"))?;
+        .map_err(|err| anyhow!("wasm trap: {err}"));
+    done.store(true, Ordering::Release);
+    let (output_ptr, output_len) = result?;
     let output = read_wasm_output(&memory, &mut store, output_ptr, output_len)?;
 
     let _ = epoch_handle.join();

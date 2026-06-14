@@ -35,6 +35,9 @@ REQUIRED_RUSTC_SERIES="${REQUIRED_RUSTC_SERIES:-1.95}"
 SKIPPED_STEPS=()
 KIND_CLUSTER=""
 VAULT_CONTAINER=""
+SECRET_MANAGER_PACKS_GENERATED=0
+SECRET_MANAGER_PACKS_OUT_DIR="${REPO_ROOT}/dist/packs"
+SECRET_MANAGER_PACK_SLUGS=(aws-sm azure-kv gcp-sm k8s vault-kv)
 
 cleanup() {
   if [[ -n "$KIND_CLUSTER" ]]; then
@@ -94,24 +97,50 @@ run_or_skip() {
   return 1
 }
 
-run_build_provider_packs_or_skip() {
+assert_secret_manager_packs_generated() {
   local out_dir="$1"
-  local output
+  local slug
+  for slug in "${SECRET_MANAGER_PACK_SLUGS[@]}"; do
+    if [[ ! -f "${out_dir}/secrets-${slug}.gtpack" ]]; then
+      echo "[fail] missing generated secret manager pack: ${out_dir}/secrets-${slug}.gtpack" >&2
+      return 1
+    fi
+    if [[ ! -d "${out_dir}/secrets-${slug}" ]]; then
+      echo "[fail] missing generated secret manager pack staging dir: ${out_dir}/secrets-${slug}" >&2
+      return 1
+    fi
+  done
+  if [[ ! -f "${out_dir}/secrets-providers.gtpack" ]]; then
+    echo "[fail] missing generated secret manager bundle pack: ${out_dir}/secrets-providers.gtpack" >&2
+    return 1
+  fi
+  if [[ ! -f "${out_dir}/VERSION" ]]; then
+    echo "[fail] missing generated secret manager pack version file: ${out_dir}/VERSION" >&2
+    return 1
+  fi
+}
 
-  if output=$(OUT_DIR="${out_dir}" "${REPO_ROOT}/scripts/build-provider-packs.sh" 2>&1); then
-    printf "%s\n" "$output"
+generate_secret_manager_packs() {
+  if [[ "$SECRET_MANAGER_PACKS_GENERATED" == "1" ]]; then
+    assert_secret_manager_packs_generated "$SECRET_MANAGER_PACKS_OUT_DIR"
     return 0
   fi
 
-  printf "%s\n" "$output"
-  if [[ "$LOCAL_CHECK_ONLINE" != "1" ]] \
-    && [[ "$output" == *"offline cache miss for oci://ghcr.io/"* ]] \
-    && [[ "$output" == *"/components/"* ]]; then
-    echo "[skip] provider pack build requires cached OCI component blobs in offline mode"
-    return 1
-  fi
+  step "Generate secret manager packs"
 
-  return 2
+  # Local CI must generate the packs even when GHCR OCI component blobs are not
+  # cached. Build all wasm components locally and force pack manifests to use
+  # file:// component refs for the generated artifacts.
+  PACK_COMPONENT_SOURCE=local "${REPO_ROOT}/scripts/build-validator-component.sh"
+  PACK_COMPONENT_SOURCE=local "${REPO_ROOT}/scripts/build-validator-pack.sh"
+  "${REPO_ROOT}/scripts/build-components.sh"
+  PACK_COMPONENT_SOURCE=local \
+    PREBUILD_COMPONENTS=0 \
+    OUT_DIR="$SECRET_MANAGER_PACKS_OUT_DIR" \
+    "${REPO_ROOT}/scripts/build-provider-packs.sh"
+
+  assert_secret_manager_packs_generated "$SECRET_MANAGER_PACKS_OUT_DIR"
+  SECRET_MANAGER_PACKS_GENERATED=1
 }
 
 require_online() {
@@ -253,17 +282,8 @@ fi
 
 run_pack_doctor() {
   step "greentic-pack doctor --validate (secrets provider packs)"
-  local out_dir="${REPO_ROOT}/dist/packs"
-  set +e
-  run_build_provider_packs_or_skip "${out_dir}"
-  local status=$?
-  set -e
-  if [[ "$status" == "1" ]]; then
-    return 0
-  fi
-  if [[ "$status" != "0" ]]; then
-    return "$status"
-  fi
+  local out_dir="$SECRET_MANAGER_PACKS_OUT_DIR"
+  generate_secret_manager_packs
   for pack in "${out_dir}"/secrets-*.gtpack; do
     greentic-pack doctor \
       --validate \
@@ -274,29 +294,20 @@ run_pack_doctor() {
   done
 }
 
-if run_or_skip "greentic-pack doctor --validate secrets packs (requires greentic-pack)" \
-  ensure_tools greentic-pack; then
+if run_or_skip "greentic-pack doctor --validate secrets packs (requires cargo, rustup, jq, rsync, greentic-pack)" \
+  ensure_tools cargo rustup jq rsync greentic-pack; then
   run_pack_doctor
 fi
 
 run_secrets_e2e() {
   step "greentic-secrets-test e2e (dry-run)"
-  local out_dir="${REPO_ROOT}/dist/packs"
-  set +e
-  run_build_provider_packs_or_skip "${out_dir}"
-  local status=$?
-  set -e
-  if [[ "$status" == "1" ]]; then
-    return 0
-  fi
-  if [[ "$status" != "0" ]]; then
-    return "$status"
-  fi
+  local out_dir="$SECRET_MANAGER_PACKS_OUT_DIR"
+  generate_secret_manager_packs
   cargo run -p greentic-secrets-test --bin greentic-secrets-test "${CARGO_OFFLINE_ARGS[@]}" -- e2e --packs "${out_dir}"
 }
 
-if run_or_skip "greentic-secrets-test e2e (requires greentic-provision)" \
-  ensure_tools cargo greentic-provision; then
+if run_or_skip "greentic-secrets-test e2e (requires cargo, rustup, jq, rsync, greentic-pack, greentic-provision)" \
+  ensure_tools cargo rustup jq rsync greentic-pack greentic-provision; then
   run_secrets_e2e
 fi
 
