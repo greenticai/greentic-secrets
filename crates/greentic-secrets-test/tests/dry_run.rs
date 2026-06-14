@@ -14,6 +14,8 @@ use serde_json::json;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
+const CONDITIONAL_AUDIT_PACKS: &[&str] = &["aws-sm", "azure-kv", "gcp-sm"];
+
 struct StubRunner {
     stdout: String,
     stderr: String,
@@ -191,6 +193,73 @@ fn leaked_secret_fails() {
     assert!(err.to_string().contains("report contains secret values"));
 }
 
+#[test]
+fn cloud_pack_setup_requirements_make_audit_credentials_conditional() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("repo root")
+        .to_path_buf();
+
+    for slug in CONDITIONAL_AUDIT_PACKS {
+        let fixture_dir = repo_root.join("packs").join(slug).join("fixtures");
+        let requirements: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(fixture_dir.join("requirements.expected.json"))
+                .expect("requirements fixture"),
+        )
+        .expect("parse requirements");
+        let setup_input: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(fixture_dir.join("setup.input.json")).expect("setup input"),
+        )
+        .expect("parse setup input");
+        let setup_plan: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(fixture_dir.join("setup.expected.plan.json")).expect("setup plan"),
+        )
+        .expect("parse setup plan");
+
+        assert!(
+            !string_list(&requirements["config"]["required"]).contains(&"audit".to_owned()),
+            "{slug} should not require audit config by default"
+        );
+        assert!(
+            !string_list(&requirements["secrets"]["required"])
+                .contains(&"audit_sink_credentials".to_owned()),
+            "{slug} should not require audit_sink_credentials unconditionally"
+        );
+        assert!(
+            string_list(&requirements["secrets"]["optional"])
+                .contains(&"audit_sink_credentials".to_owned()),
+            "{slug} should still declare audit_sink_credentials as an optional secret"
+        );
+        assert_eq!(
+            requirements["secrets"]["constraints"]["required_when"]["audit_sink_credentials"]["config_path"],
+            "audit.sink_type",
+            "{slug} should require audit credentials from audit sink config"
+        );
+        assert!(
+            !setup_input["config"]
+                .as_object()
+                .expect("config object")
+                .contains_key("audit"),
+            "{slug} default setup input should omit audit config"
+        );
+        assert!(
+            !setup_input["secrets"]
+                .as_object()
+                .expect("secrets object")
+                .contains_key("audit_sink_credentials"),
+            "{slug} default setup input should omit audit credentials"
+        );
+        assert!(
+            !setup_plan["secrets_patch"]["set"]
+                .as_object()
+                .expect("secrets patch set")
+                .contains_key("audit_sink_credentials"),
+            "{slug} default setup plan should not write audit credentials"
+        );
+    }
+}
+
 fn write_pack(path: &PathBuf, pack_id: &str) -> anyhow::Result<()> {
     let manifest = build_manifest(pack_id)?;
     let bytes = encode_pack_manifest(&manifest)?;
@@ -207,6 +276,15 @@ fn write_pack(path: &PathBuf, pack_id: &str) -> anyhow::Result<()> {
 
     zip.finish()?;
     Ok(())
+}
+
+fn string_list(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+        .collect()
 }
 
 fn build_manifest(pack_id: &str) -> anyhow::Result<PackManifest> {

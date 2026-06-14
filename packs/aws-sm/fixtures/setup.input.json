@@ -4,10 +4,6 @@
     "environment": "dev",
     "region": "placeholder",
     "namespace_prefix": "placeholder",
-    "audit": {
-      "sink_type": "splunk",
-      "sink_config_ref": "placeholder"
-    },
     "timeouts": {
       "connect_ms": 1,
       "op_ms": 1
@@ -23,10 +19,5 @@
       "log_secret_refs_only": true
     }
   },
-  "secrets": {
-    "aws_access_key_id": "fake_aws_access_key_id",
-    "aws_secret_access_key": "fake_aws_secret_access_key",
-    "aws_web_identity_token_file": "fake_aws_web_identity_token_file",
-    "audit_sink_credentials": "fake_audit_sink_credentials"
-  }
+  "secrets": {}
 }
