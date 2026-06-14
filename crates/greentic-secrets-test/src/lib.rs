@@ -808,6 +808,13 @@ fn validate_answers(requirements: &Value, answers: &Value) -> Result<()> {
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
+    let secret_required_when = requirements
+        .get("secrets")
+        .and_then(|value| value.get("constraints"))
+        .and_then(|value| value.get("required_when"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
 
     let config_values = answers
         .get("config")
@@ -858,7 +865,47 @@ fn validate_answers(requirements: &Value, answers: &Value) -> Result<()> {
         }
     }
 
+    for (secret_key, condition) in secret_required_when {
+        if condition_matches(&Value::Object(config_values.clone()), &condition) {
+            let Some(value) = secret_values.get(&secret_key) else {
+                return Err(anyhow!(
+                    "missing conditionally required secret field {secret_key}"
+                ));
+            };
+            if matches!(value, Value::String(text) if text.is_empty()) {
+                return Err(anyhow!(
+                    "missing conditionally required secret field {secret_key}"
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn condition_matches(config: &Value, condition: &Value) -> bool {
+    let Some(config_path) = condition.get("config_path").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(actual) = value_at_path(config, config_path).and_then(Value::as_str) else {
+        return false;
+    };
+    condition
+        .get("values")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().any(|value| value.as_str() == Some(actual)))
+        .unwrap_or(false)
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path.split('.') {
+        if segment.is_empty() {
+            return None;
+        }
+        current = current.get(segment)?;
+    }
+    Some(current)
 }
 
 fn check_plan_determinism(plan: &Value) -> Result<()> {
@@ -1109,5 +1156,80 @@ impl Default for E2eOptions {
             fixtures_root: PathBuf::from("packs"),
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audit_requirements() -> Value {
+        json!({
+            "provider_id": "greentic.secrets.fixture",
+            "config": {
+                "required": ["tenant_id"],
+                "optional": ["audit"],
+                "constraints": {}
+            },
+            "secrets": {
+                "required": [],
+                "optional": ["audit_sink_credentials"],
+                "constraints": {
+                    "required_when": {
+                        "audit_sink_credentials": {
+                            "config_path": "audit.sink_type",
+                            "values": ["splunk", "azure", "gcp", "http"]
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn audit_sink_credentials_optional_without_audit_config() {
+        let answers = json!({
+            "config": { "tenant_id": "tenant-a" },
+            "secrets": {}
+        });
+
+        validate_answers(&audit_requirements(), &answers).expect("audit credentials optional");
+    }
+
+    #[test]
+    fn audit_sink_credentials_optional_for_file_audit_sink() {
+        let answers = json!({
+            "config": {
+                "tenant_id": "tenant-a",
+                "audit": {
+                    "sink_type": "file",
+                    "sink_config_ref": "/tmp/audit.ndjson"
+                }
+            },
+            "secrets": {}
+        });
+
+        validate_answers(&audit_requirements(), &answers).expect("file audit uses no credentials");
+    }
+
+    #[test]
+    fn audit_sink_credentials_required_for_credentialed_audit_sink() {
+        let answers = json!({
+            "config": {
+                "tenant_id": "tenant-a",
+                "audit": {
+                    "sink_type": "splunk",
+                    "sink_config_ref": "splunk-main"
+                }
+            },
+            "secrets": {}
+        });
+
+        let err = validate_answers(&audit_requirements(), &answers)
+            .expect_err("credentialed audit sink should require credentials");
+        assert!(
+            err.to_string()
+                .contains("missing conditionally required secret field audit_sink_credentials")
+        );
     }
 }

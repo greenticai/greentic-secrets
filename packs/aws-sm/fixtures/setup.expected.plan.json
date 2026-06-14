@@ -4,10 +4,6 @@
     "environment": "dev",
     "region": "placeholder",
     "namespace_prefix": "placeholder",
-    "audit": {
-      "sink_type": "splunk",
-      "sink_config_ref": "placeholder"
-    },
     "timeouts": {
       "connect_ms": 1,
       "op_ms": 1
@@ -24,24 +20,7 @@
     }
   },
   "secrets_patch": {
-    "set": {
-      "aws_access_key_id": {
-        "redacted": true,
-        "value": null
-      },
-      "aws_secret_access_key": {
-        "redacted": true,
-        "value": null
-      },
-      "aws_web_identity_token_file": {
-        "redacted": true,
-        "value": null
-      },
-      "audit_sink_credentials": {
-        "redacted": true,
-        "value": null
-      }
-    },
+    "set": {},
     "delete": []
   },
   "webhook_ops": [],
