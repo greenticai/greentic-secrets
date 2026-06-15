@@ -13,7 +13,8 @@ registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
-SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter}"
+DEFAULT_COMPONENT_FILTER="greentic.secrets.audit_exporter,greentic.secrets.provider.aws_sm,greentic.secrets.provider.azure_kv,greentic.secrets.provider.gcp_sm,greentic.secrets.provider.k8s,greentic.secrets.provider.vault_kv"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-${DEFAULT_COMPONENT_FILTER}}"
 PACK_COMPONENT_SOURCE="${PACK_COMPONENT_SOURCE:-auto}"
 
 VERSION="$(python3 - <<'PY'
@@ -243,16 +244,17 @@ for comp in manifest.get("components", []):
         comp["uri"] = resolved_ref(d)
         comp["source"] = resolved_source(d)
     if is_pack_yaml and d:
-        local_ref = str(d.get("local_ref", "")).strip()
-        if source_mode == "local":
-            local_ref = str(comp.get("uri", "")) or local_ref
-        if local_ref.startswith("file://"):
-            source_path = Path(local_ref[len("file://"):])
+        dest_name = str(d.get("path", "")).strip()
+        selected_ref = str(comp.get("uri", "")).strip()
+        if selected_ref.startswith("file://"):
+            source_path = Path(selected_ref[len("file://"):])
             dest_dir = manifest_dir / "components"
             dest_dir.mkdir(exist_ok=True)
-            dest_name = source_path.name
+            if not dest_name:
+                dest_name = source_path.name
             dest_path = dest_dir / dest_name
             shutil.copy2(source_path, dest_path)
+        if dest_name:
             comp["wasm"] = f"components/{dest_name}"
 rewrite_extension_refs(manifest.get("extensions", {}))
 yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
@@ -292,9 +294,9 @@ PY
 
   # Include in bundle deps.
   {
-    echo "  - alias: ${slug}"
-    echo "    pack_id: greentic.secrets.${slug}"
-    echo "    version_req: \"=${VERSION}\""
+    echo "- alias: ${slug}"
+    echo "  pack_id: greentic.secrets.${slug}"
+    echo "  version_req: \"=${VERSION}\""
   } >> "${bundle_staging}/deps.tmp"
 done
 
@@ -305,17 +307,28 @@ fi
 echo "${VERSION}" > "${OUT_DIR}/VERSION"
 
 # Build bundle pack with packc.
-cat >"${bundle_staging}/pack.yaml" <<EOF
-pack_id: greentic.secrets.providers
-version: "${VERSION}"
-kind: library
-publisher: Greentic
-components: []
-dependencies:
-$(sed 's/^/  /' "${bundle_staging}/deps.tmp")
-flows: []
-assets: []
-EOF
+python3 - "${bundle_staging}/deps.tmp" "${bundle_staging}/pack.yaml" "${VERSION}" <<'PY'
+import sys
+import yaml
+
+deps_path, pack_path, version = sys.argv[1:4]
+with open(deps_path) as fh:
+    dependencies = yaml.safe_load(fh) or []
+
+manifest = {
+    "pack_id": "greentic.secrets.providers",
+    "version": version,
+    "kind": "library",
+    "publisher": "Greentic",
+    "components": [],
+    "dependencies": dependencies,
+    "flows": [],
+    "assets": [],
+}
+
+with open(pack_path, "w") as fh:
+    yaml.safe_dump(manifest, fh, sort_keys=False)
+PY
 rm -f "${bundle_staging}/deps.tmp"
 
 LOCK_FILE="${bundle_staging}/pack.lock.json"
