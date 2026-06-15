@@ -1191,6 +1191,7 @@ mod tests {
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: std::collections::BTreeMap::new(),
         };
         let manifest_bytes = encode_pack_manifest(&manifest)?;
 

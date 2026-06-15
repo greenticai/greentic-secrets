@@ -247,6 +247,7 @@ fn build_manifest(pack_id: &str) -> anyhow::Result<PackManifest> {
         signatures: PackSignatures::default(),
         bootstrap: None,
         extensions: None,
+        agents: BTreeMap::new(),
     })
 }
 

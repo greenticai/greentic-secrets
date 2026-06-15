@@ -341,6 +341,7 @@ mod tests {
             signatures: PackSignatures::default(),
             bootstrap: None,
             extensions: None,
+            agents: BTreeMap::new(),
         }
     }
 
