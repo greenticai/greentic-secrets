@@ -15,7 +15,7 @@ use greentic_secrets_core::{
 };
 use greentic_secrets_spec::{
     KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
-    SecretsError, SecretsResult, VersionedSecret,
+    SecretsError, SecretsResult, VersionedSecret, azure_key_vault_secret_name,
 };
 use reqwest::{
     Client, Method, StatusCode,
@@ -23,7 +23,6 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,7 +34,6 @@ use auth::{AuthError, KvAuthConfig, request_access_token};
 const SECRETS_API_VERSION: &str = "7.4";
 const KEYS_API_VERSION: &str = "7.4";
 const DEFAULT_PREFIX: &str = "greentic";
-const TEAM_PLACEHOLDER: &str = "_";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
 
 /// Components returned to the broker wiring.
@@ -211,41 +209,7 @@ impl AzureSecretsBackend {
     }
 
     fn secret_name(&self, uri: &SecretUri) -> String {
-        let sanitize = |value: &str| {
-            value
-                .chars()
-                .map(|c| match c {
-                    '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c.to_ascii_lowercase(),
-                    _ => '-',
-                })
-                .collect::<String>()
-        };
-
-        let base = format!(
-            "{prefix}-{env}-{tenant}-{team}-{category}-{name}",
-            prefix = sanitize(&self.config.secret_prefix),
-            env = sanitize(uri.scope().env()),
-            tenant = sanitize(uri.scope().tenant()),
-            team = uri
-                .scope()
-                .team()
-                .map(sanitize)
-                .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-            category = sanitize(uri.category()),
-            name = sanitize(uri.name()),
-        );
-
-        if base.len() <= 110 {
-            return base;
-        }
-
-        let mut hasher = Sha256::new();
-        hasher.update(base.as_bytes());
-        let suffix = hex::encode(&hasher.finalize()[..6]);
-        let mut truncated = base[..110].to_string();
-        truncated.push('-');
-        truncated.push_str(&suffix);
-        truncated
+        azure_key_vault_secret_name(&self.config.secret_prefix, uri)
     }
 
     fn send(

@@ -10,7 +10,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use greentic_secrets_core::http::{Http, HttpResponse};
 use greentic_secrets_spec::{
     KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
-    SecretsError, SecretsResult, VersionedSecret,
+    SecretsError, SecretsResult, VersionedSecret, gcp_secret_manager_secret_id,
 };
 use reqwest::{
     Method, StatusCode,
@@ -25,7 +25,6 @@ use std::time::Duration;
 const SECRET_MANAGER_ENDPOINT: &str = "https://secretmanager.googleapis.com/v1";
 const KMS_ENDPOINT: &str = "https://cloudkms.googleapis.com/v1";
 const DEFAULT_PREFIX: &str = "greentic";
-const TEAM_PLACEHOLDER: &str = "_";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
 
 fn read_response_body(response: HttpResponse) -> SecretsResult<(StatusCode, String)> {
@@ -141,35 +140,7 @@ impl GcpSecretsBackend {
     }
 
     fn secret_id(&self, uri: &SecretUri) -> String {
-        let sanitize = |value: &str| {
-            value
-                .chars()
-                .map(|c| match c {
-                    '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c,
-                    '_' => '_',
-                    _ => '-',
-                })
-                .collect::<String>()
-                .to_lowercase()
-        };
-
-        let mut id = format!(
-            "{}-{}-{}-{}-{}-{}",
-            sanitize(&self.config.secret_prefix),
-            sanitize(uri.scope().env()),
-            sanitize(uri.scope().tenant()),
-            uri.scope()
-                .team()
-                .map(sanitize)
-                .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-            sanitize(uri.category()),
-            sanitize(uri.name()),
-        );
-
-        if id.len() > 250 {
-            id.truncate(250);
-        }
-        id
+        gcp_secret_manager_secret_id(&self.config.secret_prefix, uri)
     }
 
     fn secret_resource(&self, secret_id: &str) -> String {

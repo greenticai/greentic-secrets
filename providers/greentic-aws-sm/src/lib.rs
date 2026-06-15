@@ -9,7 +9,7 @@ use aws_types::region::Region;
 use greentic_secrets_core::rt;
 use greentic_secrets_spec::{
     KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
-    SecretsError, SecretsResult, VersionedSecret,
+    SecretsError, SecretsResult, VersionedSecret, aws_secret_name, parse_aws_secret_name,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -21,7 +21,6 @@ const PREFIX_ENV: &str = "GREENTIC_AWS_SECRET_PREFIX";
 const STAGE_ENV: &str = "GREENTIC_AWS_VERSION_STAGE";
 const KMS_KEY_ENV: &str = "GREENTIC_AWS_KMS_KEY_ID";
 const REGION_ENV: &str = "GREENTIC_AWS_REGION";
-const TEAM_PLACEHOLDER: &str = "_";
 const SM_ENDPOINT_ENV: &str = "GREENTIC_AWS_SM_ENDPOINT";
 const KMS_ENDPOINT_ENV: &str = "GREENTIC_AWS_KMS_ENDPOINT";
 
@@ -104,15 +103,7 @@ impl AwsProviderConfig {
     }
 
     fn secret_name(&self, uri: &SecretUri) -> String {
-        format!(
-            "{}/{}/{}/{}/{}/{}",
-            self.secret_prefix,
-            uri.scope().env(),
-            uri.scope().tenant(),
-            uri.scope().team().unwrap_or(TEAM_PLACEHOLDER),
-            uri.category(),
-            uri.name()
-        )
+        aws_secret_name(&self.secret_prefix, uri)
     }
 
     fn scope_prefix(&self, scope: &Scope) -> String {
@@ -604,28 +595,7 @@ impl StoredSecret {
 }
 
 fn parse_secret_name(prefix: &str, name: &str) -> Option<SecretUri> {
-    let mut segments = name.split('/');
-    let prefix_segment = segments.next()?;
-    if prefix_segment != prefix {
-        return None;
-    }
-    let env = segments.next()?;
-    let tenant = segments.next()?;
-    let team_segment = segments.next()?;
-    let category = segments.next()?;
-    let name_segment = segments.next()?;
-    if segments.next().is_some() {
-        return None;
-    }
-
-    let team = if team_segment == TEAM_PLACEHOLDER {
-        None
-    } else {
-        Some(team_segment.to_string())
-    };
-
-    let scope = Scope::new(env.to_string(), tenant.to_string(), team).ok()?;
-    SecretUri::new(scope, category, name_segment).ok()
+    parse_aws_secret_name(prefix, name)
 }
 
 fn deserialize_secret_payload(
