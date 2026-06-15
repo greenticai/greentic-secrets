@@ -18,12 +18,20 @@ use rand::{Rng, RngExt};
 const RAW_TEXT_ALPHABET: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
 
+/// Upper bound on a generated secret's declared `length`. The value comes from a
+/// pack manifest, so a malformed or hostile pack could otherwise turn a single
+/// integer into an unbounded allocation / CPU sink (`base64url`/`hex` further
+/// scale it). No real secret approaches this; a pack asking for more is rejected
+/// loudly rather than silently clamped.
+const MAX_GENERATED_LENGTH: usize = 4096;
+
 /// Mint a value for a pack-declared generated secret, returning the value bytes
 /// and the [`SecretFormat`] they should be stored under.
 ///
-/// Errors with [`Error::Invalid`] on an unsupported policy or encoding, matching
-/// the runtime's historical behavior (a malformed pack fails loudly rather than
-/// silently producing the wrong shape). Uses the crate's CSPRNG (`rand::rng()`).
+/// Errors with [`Error::Invalid`] on an unsupported policy or encoding, or a
+/// `length` over [`MAX_GENERATED_LENGTH`], matching the runtime's historical
+/// behavior (a malformed pack fails loudly rather than silently producing the
+/// wrong shape). Uses the crate's CSPRNG (`rand::rng()`).
 pub fn generate_secret_value(
     generated: &GeneratedSecretRequirement,
 ) -> Result<(Vec<u8>, SecretFormat)> {
@@ -31,6 +39,15 @@ pub fn generate_secret_value(
         return Err(Error::Invalid(
             "generated secret policy".to_string(),
             generated.policy.clone(),
+        ));
+    }
+    if generated.length > MAX_GENERATED_LENGTH {
+        return Err(Error::Invalid(
+            "generated secret length".to_string(),
+            format!(
+                "{} exceeds the maximum supported length of {MAX_GENERATED_LENGTH}",
+                generated.length
+            ),
         ));
     }
     let length = generated.length.max(1);
@@ -143,5 +160,21 @@ mod tests {
             generate_secret_value(&spec("uuid", 20)),
             Err(Error::Invalid(_, _))
         ));
+    }
+
+    #[test]
+    fn over_max_length_is_rejected_and_boundary_is_accepted() {
+        let mut over = spec("raw_text", 20);
+        over.length = MAX_GENERATED_LENGTH + 1;
+        assert!(matches!(
+            generate_secret_value(&over),
+            Err(Error::Invalid(_, _))
+        ));
+
+        // The boundary value is still minted.
+        let mut at_max = spec("raw_text", 20);
+        at_max.length = MAX_GENERATED_LENGTH;
+        let (bytes, _) = generate_secret_value(&at_max).unwrap();
+        assert_eq!(bytes.len(), MAX_GENERATED_LENGTH);
     }
 }

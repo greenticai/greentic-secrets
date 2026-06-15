@@ -10,8 +10,8 @@
 
 use crate::errors::Result;
 use crate::seed::SecretsStore;
-use crate::uri::SecretUri;
 use async_trait::async_trait;
+use greentic_secrets_spec::SecretUri;
 use greentic_types::secrets::SecretFormat;
 
 /// A destination secrets can be written to during promotion.

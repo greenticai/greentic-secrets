@@ -209,16 +209,21 @@ impl<'de> Deserialize<'de> for SecretUri {
 
 /// Returns `true` when `team` represents the canonical "no specific team" value.
 ///
-/// `None`, an empty/whitespace string, and a literal `default` (any case) all
-/// denote the team-less scope. They are deliberately treated as equivalent: the
-/// store renders them all as the [`TEAM_PLACEHOLDER`] (`_`) so a secret written
-/// under one form is always found under the others.
+/// `None`, an empty/whitespace string, the literal [`TEAM_PLACEHOLDER`] (`_`),
+/// and a literal `default` (any case) all denote the team-less scope. They are
+/// deliberately treated as equivalent: the store renders them all as the
+/// `_` placeholder so a secret written under one form is always found under the
+/// others. Treating the placeholder itself as team-less keeps the canonicalizer
+/// a true round-trip — a URI *constructed* with team `Some("_")` and the same
+/// URI *parsed* back (where `_` becomes `None`) compare equal.
 pub fn is_default_team(team: Option<&str>) -> bool {
     match team {
         None => true,
         Some(value) => {
             let trimmed = value.trim();
-            trimmed.is_empty() || trimmed.eq_ignore_ascii_case("default")
+            trimmed.is_empty()
+                || trimmed == TEAM_PLACEHOLDER
+                || trimmed.eq_ignore_ascii_case("default")
         }
     }
 }
@@ -342,6 +347,7 @@ mod canonical_tests {
             None,
             Some(""),
             Some("   "),
+            Some("_"),
             Some("default"),
             Some("Default"),
             Some("DEFAULT"),
@@ -376,6 +382,23 @@ mod canonical_tests {
             "secrets://dev/demo/_/messaging-slack/api_key"
         );
         assert_eq!(none, explicit_default);
+    }
+
+    #[test]
+    fn placeholder_team_round_trips_and_equals_teamless() {
+        // A URI constructed with the literal `_` placeholder must be identical
+        // (value, equality, and hash) to a team-less one and to the same URI
+        // parsed back — otherwise the same rendered string carries two scopes.
+        let placeholder =
+            canonical_secret_uri("dev", "demo", Some("_"), "messaging-slack", "api_key").unwrap();
+        let teamless =
+            canonical_secret_uri("dev", "demo", None, "messaging-slack", "api_key").unwrap();
+        assert_eq!(placeholder, teamless);
+        assert_eq!(
+            placeholder,
+            SecretUri::parse(&placeholder.to_string()).unwrap()
+        );
+        assert_eq!(placeholder.scope().team(), None);
     }
 
     #[test]
