@@ -24,6 +24,8 @@
   ops.
 - Provider config schemas use `namespace_prefix`, not a generic `prefix`, and
   require `tenant_id` and `environment` in addition to provider-specific fields.
+  `namespace_prefix` is the provider namespace root. It is not a pre-expanded
+  `{environment}/{tenant}/{team}` path.
 
 `greentic-start` and `greentic-deployer` currently agree that existing
 `providers/secrets/*.gtpack` backend selectors are not enough. Those packs only
@@ -83,11 +85,7 @@ Representative AWS binding:
     "tenant_id": "demo",
     "environment": "dev",
     "region": "eu-north-1",
-    "namespace_prefix": "greentic/dev/demo/_",
-    "audit": {
-      "sink_type": "file",
-      "sink_config_ref": "secrets://dev/demo/_/audit/sink"
-    },
+    "namespace_prefix": "greentic",
     "timeouts": {
       "connect_ms": 100,
       "op_ms": 1000
@@ -108,15 +106,15 @@ Representative AWS binding:
 
 Provider-specific required config today:
 
-- AWS: `tenant_id`, `environment`, `region`, `namespace_prefix`, `audit`,
-  `timeouts`, `retry_policy`, `redaction_policy`; optional
+- AWS: `tenant_id`, `environment`, `region`, `namespace_prefix`,
+  `redaction_policy`; optional `audit`, `timeouts`, `retry_policy`,
   `assume_role_arn`, `kms_key_id`, `labels`.
 - GCP: `tenant_id`, `environment`, `project_id`, `auth_mode`,
-  `namespace_prefix`, `audit`, `timeouts`, `retry_policy`,
-  `redaction_policy`; optional `location`, `labels`.
+  `namespace_prefix`, `redaction_policy`; optional `audit`, `timeouts`,
+  `retry_policy`, `location`, `labels`.
 - Azure: `tenant_id`, `environment`, `vault_url`, `auth_mode`,
-  `namespace_prefix`, `audit`, `timeouts`, `retry_policy`,
-  `redaction_policy`; optional `client_id`, `labels`.
+  `namespace_prefix`, `redaction_policy`; optional `audit`, `timeouts`,
+  `retry_policy`, `client_id`, `labels`.
 
 The canonical runtime secret URI remains:
 
@@ -135,7 +133,20 @@ secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key
 ```
 
 The selected provider maps that canonical URI into the target store's native
-name using its own config, e.g. `namespace_prefix` plus URI scope/category/name.
+name using the shared `greentic-secrets-spec` provider binding contract. For
+`namespace_prefix = "greentic"`, this URI maps to:
+
+- AWS Secrets Manager:
+  `greentic/dev/demo/_/messaging-webchat-gui/jwt_signing_key`
+- GCP Secret Manager:
+  `greentic-dev-demo-_-messaging-webchat-gui-jwt_signing_key`
+- Azure Key Vault:
+  `greentic-dev-demo-_-messaging-webchat-gui-jwt-signing-key`
+
+`greentic-deployer` promotion and `greentic-start` runtime lookup must use this
+same transformation. A binding file or pack reference is not enough unless the
+runtime bundle/filesystem contains `state/config/platform/secrets-provider.json`
+and start resolves the canonical URI through the selected provider binding.
 
 ## Implementation Tasks
 
@@ -150,6 +161,7 @@ name using its own config, e.g. `namespace_prefix` plus URI scope/category/name.
    - config object presence
    - config validation against the provider pack's declared config schema
    - `namespace_prefix` safety/normalization
+   - canonical URI to provider-native name mapping
 4. Add a pack compatibility helper that proves the binding `provider_id` matches
    a provider declared by `greentic.provider-extension.v1`.
 5. Add fixtures for AWS/GCP/Azure bindings and a canonical URI resolution
@@ -176,7 +188,8 @@ name using its own config, e.g. `namespace_prefix` plus URI scope/category/name.
 secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key
 ```
 
-  can be mapped through a selected provider binding.
+  can be mapped through a selected provider binding to the exact native names
+  shown above.
 
 ## Acceptance Criteria
 

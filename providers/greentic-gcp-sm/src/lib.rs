@@ -25,8 +25,8 @@ use std::time::Duration;
 const SECRET_MANAGER_ENDPOINT: &str = "https://secretmanager.googleapis.com/v1";
 const KMS_ENDPOINT: &str = "https://cloudkms.googleapis.com/v1";
 const DEFAULT_PREFIX: &str = "greentic";
-const TEAM_PLACEHOLDER: &str = "_";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
+const TEAM_PLACEHOLDER: &str = "_";
 
 fn read_response_body(response: HttpResponse) -> SecretsResult<(StatusCode, String)> {
     let status = response.status();
@@ -141,35 +141,7 @@ impl GcpSecretsBackend {
     }
 
     fn secret_id(&self, uri: &SecretUri) -> String {
-        let sanitize = |value: &str| {
-            value
-                .chars()
-                .map(|c| match c {
-                    '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c,
-                    '_' => '_',
-                    _ => '-',
-                })
-                .collect::<String>()
-                .to_lowercase()
-        };
-
-        let mut id = format!(
-            "{}-{}-{}-{}-{}-{}",
-            sanitize(&self.config.secret_prefix),
-            sanitize(uri.scope().env()),
-            sanitize(uri.scope().tenant()),
-            uri.scope()
-                .team()
-                .map(sanitize)
-                .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-            sanitize(uri.category()),
-            sanitize(uri.name()),
-        );
-
-        if id.len() > 250 {
-            id.truncate(250);
-        }
-        id
+        runtime_secret_id(&self.config.secret_prefix, uri)
     }
 
     fn secret_resource(&self, secret_id: &str) -> String {
@@ -685,4 +657,53 @@ struct SecretListResponse {
 #[derive(Deserialize)]
 struct SecretListEntry {
     name: String,
+}
+
+fn runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
+    let mut id = format!(
+        "{}-{}-{}-{}-{}-{}",
+        gcp_secret_manager_component(namespace_prefix),
+        gcp_secret_manager_component(uri.scope().env()),
+        gcp_secret_manager_component(uri.scope().tenant()),
+        uri.scope()
+            .team()
+            .map(gcp_secret_manager_component)
+            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
+        gcp_secret_manager_component(uri.category()),
+        gcp_secret_manager_component(uri.name()),
+    );
+
+    if id.len() > 250 {
+        id.truncate(250);
+    }
+    id
+}
+
+fn gcp_secret_manager_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c,
+            '_' => '_',
+            _ => '-',
+        })
+        .collect::<String>()
+        .to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greentic_secrets_spec::{SecretUri, gcp_secret_manager_secret_id};
+
+    #[test]
+    fn runtime_secret_id_matches_spec_contract() {
+        let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
+            .expect("valid uri");
+
+        assert_eq!(
+            runtime_secret_id("greentic", &uri),
+            gcp_secret_manager_secret_id("greentic", &uri)
+        );
+    }
 }
