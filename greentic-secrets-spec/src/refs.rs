@@ -47,12 +47,7 @@ impl SecretRef {
         // First segment after the scheme is the env identifier; refs are
         // documented as `secret://<env>/<path...>`. The env segment must be
         // present and non-empty so callers can scope a ref to its env.
-        let after_scheme = &raw[SECRET_SCHEME.len()..];
-        let env_seg = match after_scheme.find('/') {
-            Some(idx) => &after_scheme[..idx],
-            None => after_scheme,
-        };
-        if env_seg.is_empty() {
+        if env_segment_of(&raw).is_empty() {
             return Err(SecretRefParseError::EmptyEnvSegment);
         }
         Ok(Self(raw))
@@ -65,11 +60,7 @@ impl SecretRef {
 
     /// First path segment after the scheme — the env id the ref is scoped to.
     pub fn env_segment(&self) -> &str {
-        let after_scheme = &self.0[SECRET_SCHEME.len()..];
-        match after_scheme.find('/') {
-            Some(idx) => &after_scheme[..idx],
-            None => after_scheme,
-        }
+        env_segment_of(&self.0)
     }
 
     /// Convert this deployment ref into the canonical runtime store URI
@@ -110,6 +101,19 @@ impl SecretRef {
         raw.push_str(SECRET_SCHEME);
         raw.push_str(body);
         Self::try_new(raw)
+    }
+}
+
+/// The env segment — the first path component after the `secret://` scheme — of
+/// a raw ref string. Callers guarantee the `secret://` prefix is present; the
+/// segment is everything up to the first `/` (or the whole tail if there is
+/// none). Shared by [`SecretRef::try_new`]'s validation and
+/// [`SecretRef::env_segment`] so the slicing rule lives in one place.
+fn env_segment_of(raw: &str) -> &str {
+    let after_scheme = &raw[SECRET_SCHEME.len()..];
+    match after_scheme.find('/') {
+        Some(idx) => &after_scheme[..idx],
+        None => after_scheme,
     }
 }
 

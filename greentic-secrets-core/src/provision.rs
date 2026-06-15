@@ -46,16 +46,10 @@ pub fn discover_secret_set(
 
     for req in requirements {
         let team = match &req.generated {
-            Some(generated) => generated_scope_team(generated, scope.team()).map(str::to_string),
-            None => scope.team().map(str::to_string),
+            Some(generated) => generated_scope_team(generated, scope.team()),
+            None => scope.team(),
         };
-        let uri = canonical_secret_uri(
-            scope.env(),
-            scope.tenant(),
-            team.as_deref(),
-            category,
-            &req.key,
-        )?;
+        let uri = canonical_secret_uri(scope.env(), scope.tenant(), team, category, &req.key)?;
         let mut managed = match &req.generated {
             Some(generated) => ManagedSecret::generated(uri, generated.clone()),
             None => ManagedSecret::user_supplied(uri),
