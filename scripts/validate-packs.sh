@@ -10,7 +10,6 @@ required_flows=(
   provider_validate.ygtc
   provider_read_secret.ygtc
   provider_write_secret.ygtc
-  provider_rotate_secret.ygtc
   provider_export_audit.ygtc
   provider_breakglass.ygtc
 )
@@ -68,7 +67,7 @@ import sys, yaml, pathlib
 EXT_ID = "${PROVIDER_EXTENSION_ID}"
 p = pathlib.Path("${manifest}")
 data = yaml.safe_load(p.read_text())
-required_entrypoints = ["onboard","validate","read_secret","write_secret","rotate_secret","export_audit","breakglass"]
+required_entrypoints = ["onboard","validate","read_secret","write_secret","export_audit","breakglass"]
 flow_entrypoints = set()
 for flow in data.get("flows") or []:
     for entry in flow.get("entrypoints") or []:
