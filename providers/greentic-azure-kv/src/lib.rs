@@ -15,7 +15,7 @@ use greentic_secrets_core::{
 };
 use greentic_secrets_spec::{
     KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
-    SecretsError, SecretsResult, VersionedSecret, azure_key_vault_secret_name,
+    SecretsError, SecretsResult, VersionedSecret,
 };
 use reqwest::{
     Client, Method, StatusCode,
@@ -23,6 +23,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::Digest;
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,6 +36,7 @@ const SECRETS_API_VERSION: &str = "7.4";
 const KEYS_API_VERSION: &str = "7.4";
 const DEFAULT_PREFIX: &str = "greentic";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
+const TEAM_PLACEHOLDER: &str = "_";
 
 /// Components returned to the broker wiring.
 pub struct BackendComponents {
@@ -209,7 +211,7 @@ impl AzureSecretsBackend {
     }
 
     fn secret_name(&self, uri: &SecretUri) -> String {
-        azure_key_vault_secret_name(&self.config.secret_prefix, uri)
+        runtime_secret_name(&self.config.secret_prefix, uri)
     }
 
     fn send(
@@ -853,6 +855,44 @@ fn extract_version_segment(id: &str) -> Option<&str> {
     id.split('/').nth_back(0)
 }
 
+fn runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
+    let base = format!(
+        "{prefix}-{env}-{tenant}-{team}-{category}-{name}",
+        prefix = azure_key_vault_component(namespace_prefix),
+        env = azure_key_vault_component(uri.scope().env()),
+        tenant = azure_key_vault_component(uri.scope().tenant()),
+        team = uri
+            .scope()
+            .team()
+            .map(azure_key_vault_component)
+            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
+        category = azure_key_vault_component(uri.category()),
+        name = azure_key_vault_component(uri.name()),
+    );
+
+    if base.len() <= 110 {
+        return base;
+    }
+
+    let mut hasher = sha2::Sha256::new();
+    sha2::Digest::update(&mut hasher, base.as_bytes());
+    let suffix = hex::encode(&sha2::Digest::finalize(hasher)[..6]);
+    let mut truncated = base[..110].to_string();
+    truncated.push('-');
+    truncated.push_str(&suffix);
+    truncated
+}
+
+fn azure_key_vault_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c.to_ascii_lowercase(),
+            _ => '-',
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -894,6 +934,17 @@ mod tests {
         assert!(
             result.is_err(),
             "call should attempt network and fail without panicking"
+        );
+    }
+
+    #[test]
+    fn runtime_secret_name_matches_spec_contract() {
+        let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
+            .expect("valid uri");
+
+        assert_eq!(
+            runtime_secret_name("greentic", &uri),
+            greentic_secrets_spec::azure_key_vault_secret_name("greentic", &uri)
         );
     }
 }

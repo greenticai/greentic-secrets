@@ -9,7 +9,7 @@ use aws_types::region::Region;
 use greentic_secrets_core::rt;
 use greentic_secrets_spec::{
     KeyProvider, Scope, SecretListItem, SecretRecord, SecretUri, SecretVersion, SecretsBackend,
-    SecretsError, SecretsResult, VersionedSecret, aws_secret_name, parse_aws_secret_name,
+    SecretsError, SecretsResult, VersionedSecret,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,6 +23,7 @@ const KMS_KEY_ENV: &str = "GREENTIC_AWS_KMS_KEY_ID";
 const REGION_ENV: &str = "GREENTIC_AWS_REGION";
 const SM_ENDPOINT_ENV: &str = "GREENTIC_AWS_SM_ENDPOINT";
 const KMS_ENDPOINT_ENV: &str = "GREENTIC_AWS_KMS_ENDPOINT";
+const TEAM_PLACEHOLDER: &str = "_";
 
 /// Components returned for integration with the broker/core wiring.
 pub struct BackendComponents {
@@ -103,7 +104,7 @@ impl AwsProviderConfig {
     }
 
     fn secret_name(&self, uri: &SecretUri) -> String {
-        aws_secret_name(&self.secret_prefix, uri)
+        runtime_secret_name(&self.secret_prefix, uri)
     }
 
     fn scope_prefix(&self, scope: &Scope) -> String {
@@ -595,7 +596,43 @@ impl StoredSecret {
 }
 
 fn parse_secret_name(prefix: &str, name: &str) -> Option<SecretUri> {
-    parse_aws_secret_name(prefix, name)
+    parse_runtime_secret_name(prefix, name)
+}
+
+fn runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
+    format!(
+        "{}/{}/{}/{}/{}/{}",
+        namespace_prefix,
+        uri.scope().env(),
+        uri.scope().tenant(),
+        uri.scope().team().unwrap_or(TEAM_PLACEHOLDER),
+        uri.category(),
+        uri.name()
+    )
+}
+
+fn parse_runtime_secret_name(namespace_prefix: &str, name: &str) -> Option<SecretUri> {
+    let mut segments = name.split('/');
+    if segments.next()? != namespace_prefix {
+        return None;
+    }
+    let env = segments.next()?;
+    let tenant = segments.next()?;
+    let team_segment = segments.next()?;
+    let category = segments.next()?;
+    let name_segment = segments.next()?;
+    if segments.next().is_some() {
+        return None;
+    }
+
+    let team = if team_segment == TEAM_PLACEHOLDER {
+        None
+    } else {
+        Some(team_segment.to_string())
+    };
+
+    let scope = Scope::new(env.to_string(), tenant.to_string(), team).ok()?;
+    SecretUri::new(scope, category, name_segment).ok()
 }
 
 fn deserialize_secret_payload(
@@ -711,6 +748,22 @@ mod tests {
         assert!(
             result.is_err(),
             "list should attempt network and bubble up errors without panicking"
+        );
+    }
+
+    #[test]
+    fn runtime_secret_name_matches_spec_contract() {
+        let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
+            .expect("valid uri");
+        let name = runtime_secret_name("greentic", &uri);
+
+        assert_eq!(
+            name,
+            greentic_secrets_spec::aws_secret_name("greentic", &uri)
+        );
+        assert_eq!(
+            parse_secret_name("greentic", &name),
+            greentic_secrets_spec::parse_aws_secret_name("greentic", &name)
         );
     }
 }
