@@ -43,7 +43,10 @@ pub fn resolve_uri_with_category(
     req: &SecretRequirement,
     default_category: &str,
 ) -> String {
-    let team = ctx.team.as_deref().unwrap_or("_");
+    // Route the team through the canonical normalizer so `default`/empty/None
+    // all collapse to the `_` placeholder (the "`_` everywhere" rule).
+    let normalized = greentic_secrets_spec::normalize_team(ctx.team.as_deref());
+    let team = normalized.as_deref().unwrap_or("_");
     let key = normalize_req_key(req.key.as_str(), default_category);
     format!("secrets://{}/{}/{}/{}", ctx.env, ctx.tenant, team, key)
 }
@@ -555,6 +558,15 @@ mod tests {
         req.key = greentic_types::secrets::SecretKey::parse("db").unwrap();
         let uri = resolve_uri_with_category(&ctx, &req, "greentic.secrets.fixture");
         assert_eq!(uri, "secrets://dev/acme/_/greentic.secrets.fixture/db");
+    }
+
+    #[test]
+    fn resolve_uri_collapses_default_team_to_placeholder() {
+        let ctx = DevContext::new("dev", "acme", Some("default".to_string()));
+        let mut req = SecretRequirement::default();
+        req.key = greentic_types::secrets::SecretKey::parse("configs/db").unwrap();
+        let uri = resolve_uri(&ctx, &req);
+        assert_eq!(uri, "secrets://dev/acme/_/configs/db");
     }
 
     #[tokio::test]

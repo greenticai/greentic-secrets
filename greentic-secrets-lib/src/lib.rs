@@ -6,6 +6,17 @@ pub use greentic_secrets_spec as spec;
 pub use greentic_secrets_spec::{
     SecretFormat, SecretKey, SecretRequirement, SecretScope, SeedDoc, SeedEntry, SeedValue,
 };
+// Canonical secret identity + the `_`-everywhere team rule (consolidation PR1).
+pub use greentic_secrets_spec::{
+    SECRET_SCHEME, SECRET_STORE_SCHEME, SecretRef, SecretRefParseError, SecretUri,
+    TEAM_PLACEHOLDER, canonical_secret_name, canonical_secret_store_key, canonical_secret_uri,
+    is_default_team, normalize_team,
+};
+// Pack-declared requirement + generation vocabulary (consolidation PR1).
+pub use greentic_secrets_spec::{
+    GeneratedSecretRequirement, GeneratedSecretScope, ManagedSecret, PackSecretRequirement,
+    SecretSet, SecretSource, generated_scope_team,
+};
 
 pub use greentic_secrets_api::*;
 
@@ -33,4 +44,10 @@ pub use greentic_secrets_core::seed::DevStore;
 pub use greentic_secrets_core::seed::{
     ApplyFailure, ApplyOptions, ApplyReport, BrokerStore, DevContext, NormalizedSeedEntry,
     SecretsStore, apply_seed, resolve_uri,
+};
+
+// Generation, discovery, provisioning, and promotion engine (consolidation PR2).
+pub use greentic_secrets_core::{
+    PromoteReport, ProvisionReport, SecretsSink, StoreSink, discover_secret_set,
+    generate_secret_value, promote, provision,
 };
