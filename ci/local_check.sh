@@ -19,7 +19,7 @@ if [[ -n "${LOCAL_CHECKPACKAGE:-}" && "$LOCAL_CHECK_PACKAGE" == "0" ]]; then
 fi
 
 if [[ "$LOCAL_CHECK_ONLINE" != "1" ]]; then
-  export CARGO_NET_OFFLINE=1
+  export CARGO_NET_OFFLINE=true
   CARGO_OFFLINE_ARGS=(--offline)
 else
   CARGO_OFFLINE_ARGS=()

@@ -2,9 +2,12 @@ use crate::spec_compat::{
     Error as CoreError, Result as CoreResult, Scope, SecretListItem, SecretRecord, SecretUri,
     SecretVersion, SecretsBackend, VersionedSecret,
 };
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Filesystem-backed secrets storage using JSON-serialised records.
 #[derive(Debug, Clone)]
@@ -56,11 +59,29 @@ impl FileBackend {
             fs::create_dir_all(parent).map_err(|err| CoreError::Storage(err.to_string()))?;
         }
         let data = serde_json::to_vec(record).map_err(|err| CoreError::Storage(err.to_string()))?;
-        let mut file =
-            fs::File::create(&path).map_err(|err| CoreError::Storage(err.to_string()))?;
-        file.write_all(&data)
-            .and_then(|_| file.sync_all())
-            .map_err(|err| CoreError::Storage(err.to_string()))
+        let temp_path = temp_path_for(&path);
+        let result = (|| -> CoreResult<()> {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp_path)
+                .map_err(|err| CoreError::Storage(err.to_string()))?;
+            file.write_all(&data)
+                .and_then(|_| file.sync_all())
+                .map_err(|err| CoreError::Storage(err.to_string()))?;
+            drop(file);
+
+            fs::rename(&temp_path, &path).map_err(|err| CoreError::Storage(err.to_string()))?;
+            if let Some(parent) = path.parent() {
+                sync_directory(parent);
+            }
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = fs::remove_file(&temp_path);
+        }
+        result
     }
 
     fn delete_record(&self, uri: &SecretUri) -> CoreResult<()> {
@@ -190,6 +211,26 @@ fn normalise_segment(input: &str) -> String {
         .collect()
 }
 
+fn temp_path_for(path: &Path) -> PathBuf {
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| "secret".into());
+    path.with_file_name(format!(
+        ".{file_name}.tmp.{}.{}",
+        std::process::id(),
+        counter
+    ))
+}
+
+fn sync_directory(path: &Path) {
+    let Ok(file) = fs::File::open(path) else {
+        return;
+    };
+    let _ = file.sync_all();
+}
+
 fn read_dir_filtered(path: &Path) -> CoreResult<Vec<(String, PathBuf)>> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(path).map_err(|err| CoreError::Storage(err.to_string()))? {
@@ -199,6 +240,9 @@ fn read_dir_filtered(path: &Path) -> CoreResult<Vec<(String, PathBuf)>> {
             .map_err(|err| CoreError::Storage(err.to_string()))?;
         if file_type.is_dir() || file_type.is_file() {
             let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
             entries.push((name, entry.path()));
         }
     }
@@ -209,6 +253,11 @@ fn read_dir_filtered(path: &Path) -> CoreResult<Vec<(String, PathBuf)>> {
 mod tests {
     use super::*;
     use crate::spec_compat::{ContentType, Envelope, SecretMeta, Visibility};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::thread;
     use tempfile::tempdir;
 
     fn sample_record(uri: SecretUri) -> SecretRecord {
@@ -221,6 +270,13 @@ mod tests {
             wrapped_dek: vec![7, 8, 9],
         };
         SecretRecord::new(meta, br#"{"token":"value"}"#.to_vec(), envelope)
+    }
+
+    fn large_record(uri: SecretUri, idx: usize) -> SecretRecord {
+        let mut record = sample_record(uri);
+        record.meta.description = Some(format!("{}-{idx}", "x".repeat(1_000_000)));
+        record.value = format!(r#"{{"token":"value-{idx}"}}"#).into_bytes();
+        record
     }
 
     #[test]
@@ -250,5 +306,39 @@ mod tests {
         let scope = Scope::new("dev", "tenant", None).unwrap();
         let uri = SecretUri::new(scope, "configs", "missing").unwrap();
         assert!(backend.get(&uri, None).unwrap().is_none());
+    }
+
+    #[test]
+    fn file_backend_concurrent_writes_do_not_expose_partial_json() {
+        let dir = tempdir().unwrap();
+        let backend = Arc::new(FileBackend::new(dir.path()));
+        let scope = Scope::new("dev", "tenant", Some("team".into())).unwrap();
+        let uri = SecretUri::new(scope, "configs", "service").unwrap();
+        backend.write_record(&large_record(uri.clone(), 0)).unwrap();
+
+        let writer_backend = backend.clone();
+        let writer_uri = uri.clone();
+        let done = Arc::new(AtomicBool::new(false));
+        let writer_done = done.clone();
+        let writer = thread::spawn(move || {
+            for idx in 1..=40 {
+                writer_backend
+                    .write_record(&large_record(writer_uri.clone(), idx))
+                    .unwrap();
+            }
+            writer_done.store(true, Ordering::Release);
+        });
+
+        let mut reads = 0;
+        while !done.load(Ordering::Acquire) || reads < 200 {
+            let found = backend.get(&uri, None).unwrap().expect("record exists");
+            let record = found.record.expect("record payload");
+            assert_eq!(record.meta.uri, uri);
+            reads += 1;
+        }
+
+        writer.join().unwrap();
+        let items = backend.list(uri.scope(), Some("configs"), None).unwrap();
+        assert_eq!(items.len(), 1);
     }
 }
