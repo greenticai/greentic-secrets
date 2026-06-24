@@ -203,7 +203,6 @@ mod tests {
         ProviderExtensionInline {
             providers: vec![ProviderDecl {
                 provider_type: "vendor.provider".into(),
-                provider_id: None,
                 capabilities: Vec::new(),
                 ops: Vec::new(),
                 config_schema_ref: "assets/schemas/secrets/demo/config.schema.json".into(),
@@ -303,7 +302,6 @@ mod tests {
     fn provider_decl_only_matches_secretish_fields() {
         let non_secret = ProviderDecl {
             provider_type: "vendor.cache".into(),
-            provider_id: None,
             capabilities: Vec::new(),
             ops: Vec::new(),
             config_schema_ref: "assets/schemas/cache/config.schema.json".into(),
