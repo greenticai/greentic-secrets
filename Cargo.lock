@@ -2649,15 +2649,15 @@ dependencies = [
 
 [[package]]
 name = "greentic-config"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f2047f5d050c1a815c07f08281cf30d1ec55c991e5763ac0afad32eea05b312"
+checksum = "5040673c67fa4a80ab2d5452e4ec0f0a6a103a4becad4ae543eaef5d57ca7267"
 dependencies = [
  "anyhow",
  "camino",
  "directories",
  "greentic-config-types",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "once_cell",
  "serde",
  "serde_json",
@@ -2669,11 +2669,11 @@ dependencies = [
 
 [[package]]
 name = "greentic-config-types"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ba264e2adc221a86937720ef086e108b9fe2908e2795439003be7a18300d3aa"
+checksum = "709b87bc01cc737d3f9669708fc15ad913d4b225830c0d43f6c572a37c494949"
 dependencies = [
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "serde",
  "serde_json",
  "toml 1.1.2+spec-1.1.0",
@@ -2700,7 +2700,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2712,7 +2712,7 @@ dependencies = [
  "greentic-secrets-core",
  "greentic-secrets-provider-dev",
  "greentic-secrets-spec",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "handlebars",
  "predicates",
  "reqwest 0.13.4",
@@ -2729,7 +2729,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-api"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2738,7 +2738,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-broker"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2756,7 +2756,7 @@ dependencies = [
  "greentic-secrets-provider-gcp-sm",
  "greentic-secrets-provider-k8s",
  "greentic-secrets-provider-vault-kv",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "hyper 1.10.1",
  "jsonwebtoken",
  "predicates",
@@ -2778,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-conformance"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "azure_core",
@@ -2790,7 +2790,7 @@ dependencies = [
  "greentic-secrets-provider-k8s",
  "greentic-secrets-provider-vault-kv",
  "greentic-secrets-spec",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "once_cell",
  "reqwest 0.13.4",
  "serde",
@@ -2803,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-core"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-nats",
@@ -2814,7 +2814,7 @@ dependencies = [
  "greentic-secrets-api",
  "greentic-secrets-provider-dev",
  "greentic-secrets-spec",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "hkdf 0.13.0",
  "jsonschema",
  "lru",
@@ -2836,7 +2836,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-lib"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -2849,14 +2849,14 @@ dependencies = [
  "greentic-secrets-provider-k8s",
  "greentic-secrets-provider-vault-kv",
  "greentic-secrets-spec",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
 ]
 
 [[package]]
 name = "greentic-secrets-pack-validator"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "semver",
  "serde_json",
  "wit-bindgen",
@@ -2864,7 +2864,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-aws-sm"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-azure-kv"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-dev"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2927,7 +2927,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-gcp-sm"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2943,7 +2943,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-k8s"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2963,7 +2963,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-provider-vault-kv"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2980,11 +2980,11 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-runner"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "base64",
  "greentic-interfaces",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "once_cell",
  "serde",
  "serde_cbor",
@@ -2996,10 +2996,10 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-spec"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "async-trait",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -3010,12 +3010,12 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-test"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "indexmap 2.14.0",
  "predicates",
  "semver",
@@ -3030,9 +3030,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-secrets-validate"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
- "greentic-types 1.2.0-research.1",
+ "greentic-types 1.2.0-research.2",
  "semver",
  "serde",
  "serde_json",
@@ -3086,9 +3086,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-types"
-version = "1.2.0-research.1"
+version = "1.2.0-research.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d2a079903dae4d40cff9b2627feea1b19c47343b1066b55d7335ddfb055f7ac"
+checksum = "55899a33b87d4cd7d87f7dd91fe840eac56440d582343f52552f29c7673e1ec4"
 dependencies = [
  "anyhow",
  "blake3",
@@ -3117,9 +3117,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-types-macros"
-version = "1.2.0-research.1"
+version = "1.2.0-research.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df20f9a818881872a93fe768e4810b04fbb3f4872a0e8b2fb580a99178497b34"
+checksum = "3ec5abb47c9395f8319992267b7e7fe5b6c63ed982bb03f94ddd2ae9a59dcb1e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5881,7 +5881,7 @@ dependencies = [
 
 [[package]]
 name = "secrets-provider-tests"
-version = "1.2.0-research.0"
+version = "1.2.0-research.1"
 dependencies = [
  "anyhow",
  "async-trait",
