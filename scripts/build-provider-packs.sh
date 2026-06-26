@@ -196,6 +196,7 @@ PY
     tmp="${staging}/gtpack.tmp.yaml"
     has_external_unresolved=$(PACK_COMPONENT_SOURCE="${resolved_source_mode}" python3 - "$DIGESTS_JSON" "$VALIDATOR_DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" "${tmp}" <<'PY'
 import json, os, sys, yaml
+from pathlib import Path
 
 component_digests_path, validator_digests_path, manifest_path, use_local_flag, components_dir, out_path = sys.argv[1:7]
 source_mode = os.environ.get("PACK_COMPONENT_SOURCE", "auto").strip().lower()
