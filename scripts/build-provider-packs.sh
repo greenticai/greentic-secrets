@@ -49,8 +49,6 @@ else
   PACK_MODE_ARGS=()
   echo "Pack mode: online"
 fi
-PACK_BUILD_ARGS=(--allow-pack-schema)
-PACK_BUNDLE_MODE=cache
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
@@ -125,48 +123,8 @@ for slug in "${providers[@]}"; do
   done
 
   # Rewrite default component namespace so forks/orgs resolve correctly.
-  for file in gtpack.yaml pack.yaml; do
-    if [[ -f "${staging}/${file}" ]]; then
-      sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/${file}"
-      rm -f "${staging}/${file}.bak"
-    fi
-  done
-
-  # Legacy pack.yaml files carry provider extensions but leave components empty,
-  # while gtpack.yaml has the canonical component declarations. Keep both
-  # manifests aligned so pack builds resolve the flow components.
-  if [[ -f "${staging}/gtpack.yaml" && -f "${staging}/pack.yaml" ]]; then
-    tmp="${staging}/pack.tmp.yaml"
-    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" > "${tmp}" <<'PY'
-import sys, yaml
-
-gtpack_path, pack_path = sys.argv[1:3]
-gtpack = yaml.safe_load(open(gtpack_path))
-pack = yaml.safe_load(open(pack_path))
-if gtpack.get("components") and not pack.get("components"):
-    provider_world = "greentic:provider/schema-core@1.0.0"
-    for extension in (pack.get("extensions") or {}).values():
-        inline = extension.get("inline") if isinstance(extension, dict) else None
-        providers = inline.get("providers") if isinstance(inline, dict) else None
-        if isinstance(providers, list) and providers:
-            runtime = providers[0].get("runtime") or {}
-            provider_world = runtime.get("world") or provider_world
-            break
-
-    components = []
-    for component in gtpack["components"]:
-        item = dict(component)
-        item.setdefault("world", provider_world)
-        item.setdefault("supports", [])
-        item.setdefault("profiles", {"default": "stateless", "supported": ["stateless"]})
-        item.setdefault("capabilities", {"wasi": {}, "host": {}})
-        item.setdefault("operations", [])
-        components.append(item)
-    pack["components"] = components
-yaml.safe_dump(pack, sys.stdout, sort_keys=False)
-PY
-    mv "${tmp}" "${staging}/pack.yaml"
-  fi
+  sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/gtpack.yaml"
+  rm -f "${staging}/gtpack.yaml.bak"
 
   # When PACK_USE_LOCAL_COMPONENTS is enabled and locally-built WASMs exist,
   # use file:// URIs so greentic-pack resolves from disk (no OCI pull needed).
@@ -196,7 +154,6 @@ PY
     tmp="${staging}/gtpack.tmp.yaml"
     has_external_unresolved=$(PACK_COMPONENT_SOURCE="${resolved_source_mode}" python3 - "$DIGESTS_JSON" "$VALIDATOR_DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" "${tmp}" <<'PY'
 import json, os, sys, yaml
-from pathlib import Path
 
 component_digests_path, validator_digests_path, manifest_path, use_local_flag, components_dir, out_path = sys.argv[1:7]
 source_mode = os.environ.get("PACK_COMPONENT_SOURCE", "auto").strip().lower()
@@ -264,9 +221,6 @@ def rewrite_extension_refs(node):
             rewrite_extension_refs(item)
 
 manifest = yaml.safe_load(open(manifest_path))
-manifest_file = Path(manifest_path)
-manifest_dir = manifest_file.parent
-is_pack_yaml = manifest_file.name == "pack.yaml"
 for comp in manifest.get("components", []):
     did = comp.get("id")
     digest_entry = digests_by_id.get(did)
@@ -317,9 +271,9 @@ PY
 
   # Include in bundle deps.
   {
-    echo "- alias: ${slug}"
-    echo "  pack_id: greentic.secrets.${slug}"
-    echo "  version_req: \"=${VERSION}\""
+    echo "  - alias: ${slug}"
+    echo "    pack_id: greentic.secrets.${slug}"
+    echo "    version_req: \"=${VERSION}\""
   } >> "${bundle_staging}/deps.tmp"
 done
 
@@ -336,28 +290,17 @@ if [[ ! -s "${bundle_deps}" ]]; then
 fi
 
 # Build bundle pack with packc.
-python3 - "${bundle_staging}/deps.tmp" "${bundle_staging}/pack.yaml" "${VERSION}" <<'PY'
-import sys
-import yaml
-
-deps_path, pack_path, version = sys.argv[1:4]
-with open(deps_path) as fh:
-    dependencies = yaml.safe_load(fh) or []
-
-manifest = {
-    "pack_id": "greentic.secrets.providers",
-    "version": version,
-    "kind": "library",
-    "publisher": "Greentic",
-    "components": [],
-    "dependencies": dependencies,
-    "flows": [],
-    "assets": [],
-}
-
-with open(pack_path, "w") as fh:
-    yaml.safe_dump(manifest, fh, sort_keys=False)
-PY
+cat >"${bundle_staging}/pack.yaml" <<EOF
+pack_id: greentic.secrets.providers
+version: "${VERSION}"
+kind: library
+publisher: Greentic
+components: []
+dependencies:
+$(sed 's/^/  /' "${bundle_staging}/deps.tmp")
+flows: []
+assets: []
+EOF
 rm -f "${bundle_staging}/deps.tmp"
 
 LOCK_FILE="${bundle_staging}/pack.lock.json"
