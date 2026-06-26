@@ -523,11 +523,16 @@ impl VaultProviderConfig {
         path: &str,
         body: Option<Value>,
     ) -> SecretsResult<Response> {
+        // Only a renewable (Kubernetes) token can benefit from a retry, so for a
+        // static token send directly and skip cloning the request body.
+        if !self.auth.is_renewable() {
+            return self.send_once(client, method, path, body).await;
+        }
         let response = self
             .send_once(client, method.clone(), path, body.clone())
             .await?;
-        // A renewable (Kubernetes) token may have expired; drop it and retry once.
-        if response.status() == StatusCode::FORBIDDEN && self.auth.is_renewable() {
+        // The cached token may have expired; drop it and retry once.
+        if response.status() == StatusCode::FORBIDDEN {
             self.auth.invalidate();
             return self.send_once(client, method, path, body).await;
         }
