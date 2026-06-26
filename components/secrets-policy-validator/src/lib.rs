@@ -1,6 +1,10 @@
 //! Stub implementation of the secrets policy validator component.
 //! Validates that secret operations conform to configured policies.
-//! This is a placeholder — full policy engine to be implemented.
+//!
+//! This is a placeholder — the full policy engine is not implemented yet. Until
+//! it is, `validate_policy` fails **closed** (`allowed: false`): a security
+//! validator must never silently authorize, so an operator that wires this stub
+//! as a trust boundary gets deny-by-default instead of an open gate.
 
 #[cfg(not(target_arch = "wasm32"))]
 use greentic_interfaces::bindings::generated::greentic_provider_schema_core_1_0_0_schema_core::exports::greentic::provider_schema_core::schema_core_api;
@@ -50,10 +54,12 @@ impl schema_core_api::Guest for PolicyValidator {
 
     fn invoke(op: String, _input_json: Vec<u8>) -> schema_core_api::InvokeResult {
         match op.as_str() {
+            // Fail closed: the policy engine is not implemented, so deny rather
+            // than silently authorize. Return a real decision once implemented.
             "validate_policy" => ok(json!({
                 "status": "ok",
-                "allowed": true,
-                "violations": [],
+                "allowed": false,
+                "violations": ["policy engine not implemented; denying by default"],
             })),
             _ => err(format!("unsupported op `{op}`")),
         }
