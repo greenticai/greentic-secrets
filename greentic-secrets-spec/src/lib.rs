@@ -8,6 +8,7 @@ pub mod error;
 pub mod generation;
 pub mod helpers;
 pub mod key_provider;
+pub mod provider_binding;
 pub mod refs;
 pub mod requirements;
 pub mod result_ext;
@@ -20,6 +21,7 @@ pub use error::{DecryptError, DecryptResult, Error, Result, SecretsError, Secret
 pub use generation::*;
 pub use helpers::*;
 pub use key_provider::*;
+pub use provider_binding::*;
 pub use refs::*;
 pub use requirements::*;
 pub use result_ext::*;

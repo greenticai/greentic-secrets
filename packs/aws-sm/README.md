@@ -9,18 +9,15 @@ Config:
 - environment
 - region
 - namespace_prefix
-- audit
 - timeouts
 - retry_policy
 - redaction_policy
-
-Secrets:
-- audit_sink_credentials
 
 Optional secrets:
 - aws_access_key_id
 - aws_secret_access_key
 - aws_web_identity_token_file
+- audit_sink_credentials (required when audit.sink_type is splunk, azure, gcp, or http)
 
 ## Safety guarantees
 - Setup plans always redact secrets (no values in logs or reports).

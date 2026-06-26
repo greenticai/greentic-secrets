@@ -16,24 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Package all publishable crates (dry-run)
-        run: |
-          metadata_json=$(cargo metadata --format-version 1 --no-deps)
-          workspace_packages=$(printf '%s\n' "$metadata_json" \
-            | jq -r '.packages[] | .name' \
-            | sort -u)
-          failures=0
-          for PKG in $workspace_packages; do
-            if ! printf '%s\n' "$metadata_json" \
-              | jq -e --arg pkg "$PKG" '.packages[] | select(.name == $pkg and .publish != ["false"])' >/dev/null; then
-              continue
-            fi
-            echo "::group::Packaging $PKG"
-            if ! cargo package -p "$PKG" --allow-dirty; then
-              failures=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $failures
+        # Package the whole workspace in one invocation so that coordinated
+        # multi-crate changes verify each crate against the locally-packaged
+        # sibling versions. A per-crate `cargo package -p` loop verifies each
+        # tarball in isolation, resolving sibling deps from the registry — which
+        # fails whenever a PR adds a new cross-crate API and its consumer
+        # together (the lower crate's new version isn't published yet).
+        # `--workspace` already skips `publish = false` crates.
+        run: cargo package --workspace --allow-dirty

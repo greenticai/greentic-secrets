@@ -11,8 +11,8 @@
     {
       "id": "audit_sink_credentials",
       "type": "string",
-      "description": "Credentials or token for the configured audit sink (Splunk/GCP/Azure/http).",
-      "required": true,
+      "description": "Credentials or token for credentialed audit sinks (Splunk/GCP/Azure/http). Required when audit.sink_type is splunk, azure, gcp, or http.",
+      "required": false,
       "redact": true
     }
   ]

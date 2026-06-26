@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -151,31 +151,40 @@ impl Persistence {
     }
 
     fn persist(&self, state: &State) -> Result<()> {
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(&self.path)
             .map_err(|err| Error::Storage(err.to_string()))?;
 
         file.lock_exclusive()
             .map_err(|err| Error::Storage(err.to_string()))?;
 
-        let persisted = PersistedState::from_state(state);
-        let json = serde_json::to_vec(&persisted).map_err(|err| Error::Storage(err.to_string()))?;
-        let encoded = STANDARD_NO_PAD.encode(json);
+        let result = (|| -> Result<()> {
+            file.set_len(0)
+                .map_err(|err| Error::Storage(err.to_string()))?;
+            file.seek(SeekFrom::Start(0))
+                .map_err(|err| Error::Storage(err.to_string()))?;
 
-        let mut writer = BufWriter::new(&file);
-        writer
-            .write_all(format!("{ENV_KEY}={encoded}\n").as_bytes())
-            .map_err(|err| Error::Storage(err.to_string()))?;
-        writer
-            .flush()
-            .map_err(|err| Error::Storage(err.to_string()))?;
+            let persisted = PersistedState::from_state(state);
+            let json =
+                serde_json::to_vec(&persisted).map_err(|err| Error::Storage(err.to_string()))?;
+            let encoded = STANDARD_NO_PAD.encode(json);
+
+            let mut writer = BufWriter::new(&file);
+            writer
+                .write_all(format!("{ENV_KEY}={encoded}\n").as_bytes())
+                .map_err(|err| Error::Storage(err.to_string()))?;
+            writer
+                .flush()
+                .map_err(|err| Error::Storage(err.to_string()))?;
+            Ok(())
+        })();
 
         let _ = fs2::FileExt::unlock(&file);
-        Ok(())
+        result
     }
 }
 
@@ -435,6 +444,12 @@ mod tests {
         ContentType, EncryptionAlgorithm, Envelope, SecretMeta, Visibility,
     };
     use serde_json::json;
+    use std::fs;
+    use std::process::Command;
+    use std::thread;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    const PERSIST_CHILD_ENV: &str = "GREENTIC_DEV_PERSIST_CHILD";
 
     fn sample_scope() -> Scope {
         Scope::new("dev", "acme", Some("payments".into())).unwrap()
@@ -596,5 +611,54 @@ mod tests {
         assert_ne!(wrapped, dek);
         let unwrapped = provider.unwrap_dek(&scope, &wrapped).unwrap();
         assert_eq!(unwrapped, dek);
+    }
+
+    #[test]
+    fn persistence_does_not_truncate_before_lock() {
+        if let Some(path) = std::env::var_os(PERSIST_CHILD_ENV) {
+            Persistence {
+                path: PathBuf::from(path),
+            }
+            .persist(&State::default())
+            .unwrap();
+            return;
+        }
+
+        let temp = std::env::temp_dir().join(format!(
+            "greentic-dev-persist-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&temp).unwrap();
+        let path = temp.join(".dev.secrets.env");
+        let original = format!("{ENV_KEY}=eyJzZWNyZXRzIjpbXX0\n");
+        fs::write(&path, &original).unwrap();
+
+        let locked = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        locked.lock_exclusive().unwrap();
+
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .arg("persistence_does_not_truncate_before_lock")
+            .arg("--exact")
+            .env(PERSIST_CHILD_ENV, &path)
+            .spawn()
+            .unwrap();
+
+        thread::sleep(Duration::from_millis(250));
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+
+        fs2::FileExt::unlock(&locked).unwrap();
+        let status = child.wait().unwrap();
+        assert!(status.success());
+
+        DevBackend::with_persistence(&path).unwrap();
+        fs::remove_dir_all(&temp).unwrap();
     }
 }

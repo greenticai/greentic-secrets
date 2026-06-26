@@ -7,14 +7,14 @@
       "vault_url",
       "auth_mode",
       "namespace_prefix",
-      "audit",
       "timeouts",
       "retry_policy",
       "redaction_policy"
     ],
     "optional": [
       "client_id",
-      "labels"
+      "labels",
+      "audit"
     ],
     "constraints": {
       "enum": {
@@ -32,13 +32,24 @@
     }
   },
   "secrets": {
-    "required": [
+    "required": [],
+    "optional": [
+      "azure_client_secret",
       "audit_sink_credentials"
     ],
-    "optional": [
-      "azure_client_secret"
-    ],
-    "constraints": {}
+    "constraints": {
+      "required_when": {
+        "audit_sink_credentials": {
+          "config_path": "audit.sink_type",
+          "values": [
+            "splunk",
+            "azure",
+            "gcp",
+            "http"
+          ]
+        }
+      }
+    }
   },
   "capabilities": {
     "supports_read": true,

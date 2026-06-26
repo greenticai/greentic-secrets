@@ -10,16 +10,13 @@ Config:
 - vault_url
 - auth_mode
 - namespace_prefix
-- audit
 - timeouts
 - retry_policy
 - redaction_policy
 
-Secrets:
-- audit_sink_credentials
-
 Optional secrets:
 - azure_client_secret
+- audit_sink_credentials (required when audit.sink_type is splunk, azure, gcp, or http)
 
 ## Safety guarantees
 - Setup plans always redact secrets (no values in logs or reports).

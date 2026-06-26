@@ -21,9 +21,9 @@ const PREFIX_ENV: &str = "GREENTIC_AWS_SECRET_PREFIX";
 const STAGE_ENV: &str = "GREENTIC_AWS_VERSION_STAGE";
 const KMS_KEY_ENV: &str = "GREENTIC_AWS_KMS_KEY_ID";
 const REGION_ENV: &str = "GREENTIC_AWS_REGION";
-const TEAM_PLACEHOLDER: &str = "_";
 const SM_ENDPOINT_ENV: &str = "GREENTIC_AWS_SM_ENDPOINT";
 const KMS_ENDPOINT_ENV: &str = "GREENTIC_AWS_KMS_ENDPOINT";
+const TEAM_PLACEHOLDER: &str = "_";
 
 /// Components returned for integration with the broker/core wiring.
 pub struct BackendComponents {
@@ -104,15 +104,7 @@ impl AwsProviderConfig {
     }
 
     fn secret_name(&self, uri: &SecretUri) -> String {
-        format!(
-            "{}/{}/{}/{}/{}/{}",
-            self.secret_prefix,
-            uri.scope().env(),
-            uri.scope().tenant(),
-            uri.scope().team().unwrap_or(TEAM_PLACEHOLDER),
-            uri.category(),
-            uri.name()
-        )
+        runtime_secret_name(&self.secret_prefix, uri)
     }
 
     fn scope_prefix(&self, scope: &Scope) -> String {
@@ -604,9 +596,24 @@ impl StoredSecret {
 }
 
 fn parse_secret_name(prefix: &str, name: &str) -> Option<SecretUri> {
+    parse_runtime_secret_name(prefix, name)
+}
+
+fn runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
+    format!(
+        "{}/{}/{}/{}/{}/{}",
+        namespace_prefix,
+        uri.scope().env(),
+        uri.scope().tenant(),
+        uri.scope().team().unwrap_or(TEAM_PLACEHOLDER),
+        uri.category(),
+        uri.name()
+    )
+}
+
+fn parse_runtime_secret_name(namespace_prefix: &str, name: &str) -> Option<SecretUri> {
     let mut segments = name.split('/');
-    let prefix_segment = segments.next()?;
-    if prefix_segment != prefix {
+    if segments.next()? != namespace_prefix {
         return None;
     }
     let env = segments.next()?;
@@ -741,6 +748,22 @@ mod tests {
         assert!(
             result.is_err(),
             "list should attempt network and bubble up errors without panicking"
+        );
+    }
+
+    #[test]
+    fn runtime_secret_name_matches_spec_contract() {
+        let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
+            .expect("valid uri");
+        let name = runtime_secret_name("greentic", &uri);
+
+        assert_eq!(
+            name,
+            greentic_secrets_spec::aws_secret_name("greentic", &uri)
+        );
+        assert_eq!(
+            parse_secret_name("greentic", &name),
+            greentic_secrets_spec::parse_aws_secret_name("greentic", &name)
         );
     }
 }

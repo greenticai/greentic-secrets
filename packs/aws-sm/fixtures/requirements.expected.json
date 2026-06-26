@@ -6,7 +6,6 @@
       "environment",
       "region",
       "namespace_prefix",
-      "audit",
       "timeouts",
       "retry_policy",
       "redaction_policy"
@@ -14,7 +13,8 @@
     "optional": [
       "assume_role_arn",
       "kms_key_id",
-      "labels"
+      "labels",
+      "audit"
     ],
     "constraints": {
       "enum": {
@@ -27,15 +27,26 @@
     }
   },
   "secrets": {
-    "required": [
-      "audit_sink_credentials"
-    ],
+    "required": [],
     "optional": [
       "aws_access_key_id",
       "aws_secret_access_key",
-      "aws_web_identity_token_file"
+      "aws_web_identity_token_file",
+      "audit_sink_credentials"
     ],
-    "constraints": {}
+    "constraints": {
+      "required_when": {
+        "audit_sink_credentials": {
+          "config_path": "audit.sink_type",
+          "values": [
+            "splunk",
+            "azure",
+            "gcp",
+            "http"
+          ]
+        }
+      }
+    }
   },
   "capabilities": {
     "supports_read": true,

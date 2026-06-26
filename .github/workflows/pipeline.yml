@@ -13,14 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUST_VERSION: "1.91.1"
+  RUST_VERSION: "1.95.0"
   GREENTIC_PACK_REV: c3fe8aa
 
 jobs:
   tools:
     runs-on: ubuntu-latest
     steps:
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - name: Cache Cargo binaries
         uses: actions/cache@v4
         with:
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - name: fmt + clippy
         run: |
@@ -71,7 +71,7 @@ jobs:
       CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
@@ -101,7 +101,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - if: matrix.provider == 'k8s'
         name: Start KinD
         uses: helm/kind-action@v1
@@ -134,7 +134,7 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-wasip2
       - name: Restore cargo bin
@@ -183,7 +183,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - name: Publish changed crates
         uses: katyo/publish-crates@v2
@@ -203,8 +203,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust 1.90 with wasm target
-        uses: dtolnay/rust-toolchain@1.91.1
+      - name: Install Rust 1.95 with wasm target
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-wasip2
       - name: Install dependencies
@@ -240,7 +240,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: dtolnay/rust-toolchain@1.95.0
       - name: Restore cargo bin
         uses: actions/download-artifact@v4
         with:
@@ -326,8 +326,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust 1.90 with wasm target
-        uses: dtolnay/rust-toolchain@1.91.1
+      - name: Install Rust 1.95 with wasm target
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-wasip2
       - name: Restore cargo bin

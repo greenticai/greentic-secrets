@@ -5,6 +5,10 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use wasmtime::{Config, Engine, Instance, Module, Store};
@@ -98,6 +102,8 @@ impl ProvisionRunner for GreenticProvisionRunner {
         answers: Option<&Path>,
         timeout: Duration,
     ) -> Result<Output> {
+        // The provision runner executes a configured binary path directly without a shell.
+        // foxguard: ignore[rs/no-command-injection]
         let mut cmd = Command::new(&self.bin);
         cmd.arg("dry-run")
             .arg("setup")
@@ -802,6 +808,13 @@ fn validate_answers(requirements: &Value, answers: &Value) -> Result<()> {
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
+    let secret_required_when = requirements
+        .get("secrets")
+        .and_then(|value| value.get("constraints"))
+        .and_then(|value| value.get("required_when"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
 
     let config_values = answers
         .get("config")
@@ -852,7 +865,47 @@ fn validate_answers(requirements: &Value, answers: &Value) -> Result<()> {
         }
     }
 
+    for (secret_key, condition) in secret_required_when {
+        if condition_matches(&Value::Object(config_values.clone()), &condition) {
+            let Some(value) = secret_values.get(&secret_key) else {
+                return Err(anyhow!(
+                    "missing conditionally required secret field {secret_key}"
+                ));
+            };
+            if matches!(value, Value::String(text) if text.is_empty()) {
+                return Err(anyhow!(
+                    "missing conditionally required secret field {secret_key}"
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn condition_matches(config: &Value, condition: &Value) -> bool {
+    let Some(config_path) = condition.get("config_path").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(actual) = value_at_path(config, config_path).and_then(Value::as_str) else {
+        return false;
+    };
+    condition
+        .get("values")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().any(|value| value.as_str() == Some(actual)))
+        .unwrap_or(false)
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path.split('.') {
+        if segment.is_empty() {
+            return None;
+        }
+        current = current.get(segment)?;
+    }
+    Some(current)
 }
 
 fn check_plan_determinism(plan: &Value) -> Result<()> {
@@ -1004,10 +1057,18 @@ fn execute_wasm_step(
     let mut store = Store::new(&engine, ());
 
     let engine_clone = engine.clone();
+    let done = Arc::new(AtomicBool::new(false));
+    let done_for_timeout = Arc::clone(&done);
     let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
     let epoch_handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(timeout_ms));
-        engine_clone.increment_epoch();
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        while !done_for_timeout.load(Ordering::Acquire) {
+            if Instant::now() >= deadline {
+                engine_clone.increment_epoch();
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     });
     store.set_epoch_deadline(1);
 
@@ -1030,9 +1091,11 @@ fn execute_wasm_step(
         .ok_or_else(|| anyhow!("missing run export"))?;
     let func = func.typed::<(i32, i32), (i32, i32)>(&store)?;
 
-    let (output_ptr, output_len) = func
+    let result = func
         .call(&mut store, (4096i32, input_bytes.len() as i32))
-        .map_err(|err| anyhow!("wasm trap: {err}"))?;
+        .map_err(|err| anyhow!("wasm trap: {err}"));
+    done.store(true, Ordering::Release);
+    let (output_ptr, output_len) = result?;
     let output = read_wasm_output(&memory, &mut store, output_ptr, output_len)?;
 
     let _ = epoch_handle.join();
@@ -1093,5 +1156,80 @@ impl Default for E2eOptions {
             fixtures_root: PathBuf::from("packs"),
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audit_requirements() -> Value {
+        json!({
+            "provider_id": "greentic.secrets.fixture",
+            "config": {
+                "required": ["tenant_id"],
+                "optional": ["audit"],
+                "constraints": {}
+            },
+            "secrets": {
+                "required": [],
+                "optional": ["audit_sink_credentials"],
+                "constraints": {
+                    "required_when": {
+                        "audit_sink_credentials": {
+                            "config_path": "audit.sink_type",
+                            "values": ["splunk", "azure", "gcp", "http"]
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn audit_sink_credentials_optional_without_audit_config() {
+        let answers = json!({
+            "config": { "tenant_id": "tenant-a" },
+            "secrets": {}
+        });
+
+        validate_answers(&audit_requirements(), &answers).expect("audit credentials optional");
+    }
+
+    #[test]
+    fn audit_sink_credentials_optional_for_file_audit_sink() {
+        let answers = json!({
+            "config": {
+                "tenant_id": "tenant-a",
+                "audit": {
+                    "sink_type": "file",
+                    "sink_config_ref": "/tmp/audit.ndjson"
+                }
+            },
+            "secrets": {}
+        });
+
+        validate_answers(&audit_requirements(), &answers).expect("file audit uses no credentials");
+    }
+
+    #[test]
+    fn audit_sink_credentials_required_for_credentialed_audit_sink() {
+        let answers = json!({
+            "config": {
+                "tenant_id": "tenant-a",
+                "audit": {
+                    "sink_type": "splunk",
+                    "sink_config_ref": "splunk-main"
+                }
+            },
+            "secrets": {}
+        });
+
+        let err = validate_answers(&audit_requirements(), &answers)
+            .expect_err("credentialed audit sink should require credentials");
+        assert!(
+            err.to_string()
+                .contains("missing conditionally required secret field audit_sink_credentials")
+        );
     }
 }

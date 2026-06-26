@@ -4,6 +4,8 @@ from pathlib import Path
 
 SLUGS = ["aws-sm", "azure-kv", "gcp-sm", "k8s", "vault-kv"]
 ROOT = Path(__file__).resolve().parent.parent
+AUDIT_CREDENTIAL_SLUGS = {"aws-sm", "azure-kv", "gcp-sm"}
+AUDIT_CREDENTIAL_SINKS = ["splunk", "azure", "gcp", "http"]
 
 
 def extract_pack_id(pack_yaml: Path) -> str:
@@ -58,6 +60,10 @@ def enum_constraints(schema: dict):
     return constraints
 
 
+def secret_key(item: dict):
+    return item.get("id") or item.get("key")
+
+
 for slug in SLUGS:
     pack_dir = ROOT / "packs" / slug
     pack_yaml = pack_dir / "pack.yaml"
@@ -77,9 +83,21 @@ for slug in SLUGS:
         for key in required_config
     }
 
-    secret_required = [item.get("id") for item in secrets if item.get("required")]
-    secret_optional = [item.get("id") for item in secrets if not item.get("required")]
-    secret_keys = [item.get("id") for item in secrets]
+    secret_required = [secret_key(item) for item in secrets if item.get("required")]
+    secret_optional = [secret_key(item) for item in secrets if not item.get("required")]
+    setup_secret_keys = (
+        secret_required
+        if slug in AUDIT_CREDENTIAL_SLUGS
+        else [secret_key(item) for item in secrets]
+    )
+    secret_constraints = {}
+    if slug in AUDIT_CREDENTIAL_SLUGS:
+        secret_constraints["required_when"] = {
+            "audit_sink_credentials": {
+                "config_path": "audit.sink_type",
+                "values": AUDIT_CREDENTIAL_SINKS,
+            }
+        }
 
     requirements = {
         "provider_id": pack_id,
@@ -91,7 +109,7 @@ for slug in SLUGS:
         "secrets": {
             "required": secret_required,
             "optional": secret_optional,
-            "constraints": {},
+            "constraints": secret_constraints,
         },
         "capabilities": {
             "supports_read": True,
@@ -107,13 +125,13 @@ for slug in SLUGS:
 
     setup_input = {
         "config": config_input,
-        "secrets": {key: f"fake_{key}" for key in secret_keys},
+        "secrets": {key: f"fake_{key}" for key in setup_secret_keys},
     }
 
     plan = {
         "config_patch": config_input,
         "secrets_patch": {
-            "set": {key: {"redacted": True, "value": None} for key in secret_keys},
+            "set": {key: {"redacted": True, "value": None} for key in setup_secret_keys},
             "delete": [],
         },
         "webhook_ops": [],
@@ -169,4 +187,3 @@ for slug in SLUGS:
         ],
     }
     (pack_dir / "pack.json").write_text(json.dumps(pack_json, indent=2) + "\n")
-
