@@ -21,6 +21,10 @@ use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
+mod identity;
+
+use identity::VaultAuthenticator;
+
 const DEFAULT_KV_MOUNT: &str = "secret";
 const DEFAULT_KV_PREFIX: &str = "greentic";
 const DEFAULT_TRANSIT_MOUNT: &str = "transit";
@@ -436,7 +440,7 @@ impl KeyProvider for VaultTransitProvider {
 #[derive(Clone, Debug)]
 struct VaultProviderConfig {
     addr: String,
-    token: String,
+    auth: Arc<VaultAuthenticator>,
     namespace: Option<String>,
     kv_mount: String,
     kv_prefix: String,
@@ -450,9 +454,8 @@ struct VaultProviderConfig {
 impl VaultProviderConfig {
     fn from_env() -> Result<Self> {
         let addr = std::env::var("VAULT_ADDR").context("set VAULT_ADDR to the Vault server URL")?;
-        let token =
-            std::env::var("VAULT_TOKEN").context("set VAULT_TOKEN for Vault authentication")?;
         let namespace = std::env::var("VAULT_NAMESPACE").ok();
+        let auth = Arc::new(VaultAuthenticator::from_env(&addr, namespace.clone())?);
         let kv_mount =
             std::env::var("VAULT_KV_MOUNT").unwrap_or_else(|_| DEFAULT_KV_MOUNT.to_string());
         let kv_prefix =
@@ -477,7 +480,7 @@ impl VaultProviderConfig {
 
         Ok(Self {
             addr,
-            token,
+            auth,
             namespace,
             kv_mount,
             kv_prefix,
@@ -520,13 +523,37 @@ impl VaultProviderConfig {
         path: &str,
         body: Option<Value>,
     ) -> SecretsResult<Response> {
+        // Only a renewable (Kubernetes) token can benefit from a retry, so for a
+        // static token send directly and skip cloning the request body.
+        if !self.auth.is_renewable() {
+            return self.send_once(client, method, path, body).await;
+        }
+        let response = self
+            .send_once(client, method.clone(), path, body.clone())
+            .await?;
+        // The cached token may have expired; drop it and retry once.
+        if response.status() == StatusCode::FORBIDDEN {
+            self.auth.invalidate();
+            return self.send_once(client, method, path, body).await;
+        }
+        Ok(response)
+    }
+
+    async fn send_once(
+        &self,
+        client: &Client,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> SecretsResult<Response> {
         let url = format!(
             "{}/{}",
             self.addr.trim_end_matches('/'),
             path.trim_start_matches('/')
         );
+        let token = self.auth.token(client).await?;
         let mut builder = client.request(method, url);
-        builder = builder.header("X-Vault-Token", &self.token);
+        builder = builder.header("X-Vault-Token", token);
         if let Some(namespace) = &self.namespace {
             builder = builder.header("X-Vault-Namespace", namespace);
         }
@@ -737,6 +764,7 @@ fn decode_bytes(input: &str) -> SecretsResult<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    use super::identity::kubernetes_login_request;
     use super::*;
     use once_cell::sync::Lazy;
     use std::sync::Mutex;
@@ -749,10 +777,21 @@ mod tests {
 
     impl EnvReset {
         fn new(pairs: &[(&'static str, &str)]) -> Self {
+            let owned: Vec<(&'static str, Option<&str>)> =
+                pairs.iter().map(|(k, v)| (*k, Some(*v))).collect();
+            Self::with(&owned)
+        }
+
+        /// Like [`new`], but a `None` value removes the variable for the
+        /// test's lifetime (restored on drop).
+        fn with(pairs: &[(&'static str, Option<&str>)]) -> Self {
             let mut vars = Vec::new();
             for (key, value) in pairs {
                 vars.push((*key, std::env::var(key).ok()));
-                unsafe { std::env::set_var(key, value) };
+                match value {
+                    Some(v) => unsafe { std::env::set_var(key, v) },
+                    None => unsafe { std::env::remove_var(key) },
+                }
             }
             Self { vars }
         }
@@ -787,5 +826,69 @@ mod tests {
 
         let result = backend.get(&uri, None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn identity_uses_static_token_when_present() {
+        let _guard = ENV_GUARD.lock().expect("env guard");
+        let _env = EnvReset::with(&[("VAULT_TOKEN", Some("static-token"))]);
+        let auth = VaultAuthenticator::from_env("http://vault:8200", None).expect("token identity");
+        assert!(!auth.is_renewable());
+    }
+
+    #[test]
+    fn identity_selects_kubernetes_when_only_role_is_set() {
+        let _guard = ENV_GUARD.lock().expect("env guard");
+        let _env = EnvReset::with(&[
+            ("VAULT_TOKEN", None),
+            ("VAULT_K8S_ROLE", Some("greentic-worker")),
+        ]);
+        let auth =
+            VaultAuthenticator::from_env("http://vault:8200", None).expect("kubernetes identity");
+        assert!(auth.is_renewable());
+    }
+
+    #[test]
+    fn identity_requires_a_configured_method() {
+        let _guard = ENV_GUARD.lock().expect("env guard");
+        let _env = EnvReset::with(&[("VAULT_TOKEN", None), ("VAULT_K8S_ROLE", None)]);
+        assert!(VaultAuthenticator::from_env("http://vault:8200", None).is_err());
+    }
+
+    #[test]
+    fn kubernetes_login_request_builds_canonical_url_and_body() {
+        let (url, body) = kubernetes_login_request(
+            "https://vault.example.com/",
+            "/kubernetes/",
+            "greentic-worker",
+            "jwt-value",
+        );
+        assert_eq!(url, "https://vault.example.com/v1/auth/kubernetes/login");
+        assert_eq!(body["role"], "greentic-worker");
+        assert_eq!(body["jwt"], "jwt-value");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn kubernetes_login_surfaces_a_missing_jwt_file() {
+        // Capture the env-derived config under the guard, then drop the guard
+        // before awaiting — the authenticator already holds the jwt path.
+        let auth = {
+            let _guard = ENV_GUARD.lock().expect("env guard");
+            let _env = EnvReset::with(&[
+                ("VAULT_TOKEN", None),
+                ("VAULT_K8S_ROLE", Some("greentic-worker")),
+                ("VAULT_K8S_JWT_PATH", Some("/nonexistent/greentic/sa-token")),
+            ]);
+            VaultAuthenticator::from_env("http://127.0.0.1:9", None).expect("kubernetes identity")
+        };
+        let client = Client::builder().build().expect("client");
+        let err = auth
+            .token(&client)
+            .await
+            .expect_err("missing jwt must fail");
+        assert!(
+            err.to_string().contains("service-account token"),
+            "unexpected error: {err}"
+        );
     }
 }
