@@ -445,21 +445,27 @@ impl SecretsCore {
         Ok(secret)
     }
 
-    /// Store JSON content at the provided URI.
-    pub async fn put_json<T: Serialize>(
+    /// Store raw bytes at the provided URI under the given content type.
+    ///
+    /// The symmetric write counterpart to [`get_bytes`](Self::get_bytes): the
+    /// payload is persisted verbatim (envelope-encrypted by the broker) and
+    /// read back byte-for-byte, with no serialization framing. Use it to seed a
+    /// value a consumer reads raw — e.g. a provider token — where the JSON
+    /// quoting [`put_json`](Self::put_json) adds would corrupt the round-trip.
+    pub async fn put_bytes(
         &self,
         uri: &str,
-        value: &T,
+        value: &[u8],
+        content_type: ContentType,
     ) -> Result<SecretMeta, SecretsError> {
         let uri = self.parse_uri(uri)?;
         self.ensure_scope_allowed(uri.scope())?;
-        let bytes = serde_json::to_vec(value)?;
-        let mut meta = SecretMeta::new(uri.clone(), Visibility::Team, ContentType::Json);
+        let mut meta = SecretMeta::new(uri.clone(), Visibility::Team, content_type);
         meta.description = None;
 
         {
             let mut broker = self.broker.lock().unwrap();
-            broker.put_secret(meta.clone(), &bytes)?;
+            broker.put_secret(meta.clone(), value)?;
         }
 
         self.store_cache(
@@ -467,11 +473,30 @@ impl SecretsCore {
             &BrokerSecret {
                 version: 0,
                 meta: meta.clone(),
-                payload: bytes.clone(),
+                payload: value.to_vec(),
             },
         );
 
         Ok(meta)
+    }
+
+    /// Store UTF-8 text at the provided URI. Convenience wrapper over
+    /// [`put_bytes`](Self::put_bytes) with [`ContentType::Text`]; round-trips
+    /// byte-for-byte with [`get_text`](Self::get_text).
+    pub async fn put_text(&self, uri: &str, value: &str) -> Result<SecretMeta, SecretsError> {
+        self.put_bytes(uri, value.as_bytes(), ContentType::Text)
+            .await
+    }
+
+    /// Store JSON content at the provided URI. Serializes `value` and stores it
+    /// via [`put_bytes`](Self::put_bytes) under [`ContentType::Json`].
+    pub async fn put_json<T: Serialize>(
+        &self,
+        uri: &str,
+        value: &T,
+    ) -> Result<SecretMeta, SecretsError> {
+        let bytes = serde_json::to_vec(value)?;
+        self.put_bytes(uri, &bytes, ContentType::Json).await
     }
 
     /// Delete a secret.
@@ -944,6 +969,31 @@ mod tests {
 
             let value: serde_json::Value = core.get_json(uri).await.unwrap();
             assert_eq!(value, payload);
+        });
+    }
+
+    #[test]
+    fn put_bytes_roundtrips_raw_without_json_framing() {
+        rt().block_on(async {
+            let core = SecretsCore::builder()
+                .tenant("acme")
+                .backend(MemoryBackend::new(), MemoryKeyProvider::default())
+                .build()
+                .await
+                .unwrap();
+
+            // A provider token the runtime reads back raw via `get_bytes`.
+            let uri = "secrets://dev/acme/_/messaging-telegram/telegram_bot_token";
+            let token = "123:AA-bb_cc";
+            core.put_text(uri, token).await.unwrap();
+            assert_eq!(core.get_bytes(uri).await.unwrap(), token.as_bytes());
+            assert_eq!(core.get_text(uri).await.unwrap(), token);
+
+            // `put_json` would frame the same string with quotes — exactly the
+            // corruption `put_bytes`/`put_text` avoids for a raw consumer.
+            let json_uri = "secrets://dev/acme/_/messaging-telegram/json_token";
+            core.put_json(json_uri, &token).await.unwrap();
+            assert_eq!(core.get_bytes(json_uri).await.unwrap(), b"\"123:AA-bb_cc\"");
         });
     }
 

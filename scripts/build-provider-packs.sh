@@ -9,12 +9,13 @@ DIGESTS_JSON="$ROOT_DIR/target/components/digests.json"
 VALIDATOR_PACK="$ROOT_DIR/dist/validators-secrets.gtpack"
 VALIDATOR_DIGESTS_JSON="$ROOT_DIR/target/validators/digests.json"
 PACK_OFFLINE="${PACK_OFFLINE:-1}"
+PACK_USE_LOCAL_COMPONENTS="${PACK_USE_LOCAL_COMPONENTS:-auto}"
+SKIP_DOCTOR="${SKIP_DOCTOR:-0}"
 registry_owner="${REGISTRY_OWNER:-${GITHUB_REPOSITORY_OWNER:-greenticai}}"
 registry_owner="$(printf '%s' "${registry_owner}" | tr '[:upper:]' '[:lower:]')"
 components_registry="${COMPONENTS_REGISTRY:-ghcr.io/${registry_owner}/components}"
 PREBUILD_COMPONENTS="${PREBUILD_COMPONENTS:-auto}"
-DEFAULT_COMPONENT_FILTER="greentic.secrets.audit_exporter,greentic.secrets.provider.aws_sm,greentic.secrets.provider.azure_kv,greentic.secrets.provider.gcp_sm,greentic.secrets.provider.k8s,greentic.secrets.provider.vault_kv"
-SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-${DEFAULT_COMPONENT_FILTER}}"
+SHARED_COMPONENT_FILTER="${SHARED_COMPONENT_FILTER:-greentic.secrets.audit_exporter,greentic.secrets.generators,greentic.secrets.policy_validator,greentic.secrets.provider.aws_sm,greentic.secrets.provider.azure_kv,greentic.secrets.provider.gcp_sm,greentic.secrets.provider.k8s,greentic.secrets.provider.vault_kv}"
 PACK_COMPONENT_SOURCE="${PACK_COMPONENT_SOURCE:-auto}"
 
 VERSION="$(python3 - <<'PY'
@@ -48,8 +49,6 @@ else
   PACK_MODE_ARGS=()
   echo "Pack mode: online"
 fi
-PACK_BUILD_ARGS=(--allow-pack-schema)
-PACK_BUNDLE_MODE=cache
 
 if [[ ! -f "${VALIDATOR_PACK}" ]]; then
   "${ROOT_DIR}/scripts/build-validator-pack.sh"
@@ -124,63 +123,45 @@ for slug in "${providers[@]}"; do
   done
 
   # Rewrite default component namespace so forks/orgs resolve correctly.
-  for file in gtpack.yaml pack.yaml; do
-    if [[ -f "${staging}/${file}" ]]; then
-      sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/${file}"
-      rm -f "${staging}/${file}.bak"
-    fi
-  done
+  sed -i.bak "s|ghcr.io/greenticai/components|${components_registry}|g" "${staging}/gtpack.yaml"
+  rm -f "${staging}/gtpack.yaml.bak"
 
-  # Legacy pack.yaml files carry provider extensions but leave components empty,
-  # while gtpack.yaml has the canonical component declarations. Keep both
-  # manifests aligned so pack builds resolve the flow components.
-  if [[ -f "${staging}/gtpack.yaml" && -f "${staging}/pack.yaml" ]]; then
-    tmp="${staging}/pack.tmp.yaml"
-    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" > "${tmp}" <<'PY'
-import sys, yaml
-
-gtpack_path, pack_path = sys.argv[1:3]
-gtpack = yaml.safe_load(open(gtpack_path))
-pack = yaml.safe_load(open(pack_path))
-if gtpack.get("components") and not pack.get("components"):
-    provider_world = "greentic:provider/schema-core@1.0.0"
-    for extension in (pack.get("extensions") or {}).values():
-        inline = extension.get("inline") if isinstance(extension, dict) else None
-        providers = inline.get("providers") if isinstance(inline, dict) else None
-        if isinstance(providers, list) and providers:
-            runtime = providers[0].get("runtime") or {}
-            provider_world = runtime.get("world") or provider_world
-            break
-
-    components = []
-    for component in gtpack["components"]:
-        item = dict(component)
-        item.setdefault("world", provider_world)
-        item.setdefault("supports", [])
-        item.setdefault("profiles", {"default": "stateless", "supported": ["stateless"]})
-        item.setdefault("capabilities", {"wasi": {}, "host": {}})
-        item.setdefault("operations", [])
-        components.append(item)
-    pack["components"] = components
-yaml.safe_dump(pack, sys.stdout, sort_keys=False)
-PY
-    mv "${tmp}" "${staging}/pack.yaml"
+  # When PACK_USE_LOCAL_COMPONENTS is enabled and locally-built WASMs exist,
+  # use file:// URIs so greentic-pack resolves from disk (no OCI pull needed).
+  # This avoids "Not authorized" errors when OCI credentials are unavailable.
+  use_local="0"
+  if [[ "${PACK_USE_LOCAL_COMPONENTS}" == "1" || "${PACK_USE_LOCAL_COMPONENTS}" == "true" ]]; then
+    use_local="1"
+  elif [[ "${PACK_USE_LOCAL_COMPONENTS}" == "auto" && -f "${DIGESTS_JSON}" ]]; then
+    # Auto-detect: use local files when digests exist and all referenced WASMs are present
+    use_local="1"
+    while IFS= read -r wasm_path; do
+      if [[ ! -f "${OUT_DIR}/../components/${wasm_path}" && ! -f "${ROOT_DIR}/target/components/${wasm_path}" ]]; then
+        use_local="0"
+        break
+      fi
+    done < <(python3 -c "import json,sys; [print(e['path']) for e in json.load(open(sys.argv[1]))]" "${DIGESTS_JSON}" 2>/dev/null || true)
   fi
 
-  # If digests are available, rewrite component URIs to pin them.
-  if [[ -f "${DIGESTS_JSON}" || -f "${VALIDATOR_DIGESTS_JSON}" ]]; then
-    for file in gtpack.yaml pack.yaml; do
-      [[ -f "${staging}/${file}" ]] || continue
-      tmp="${staging}/${file}.tmp"
-      python3 - "$DIGESTS_JSON" "$VALIDATOR_DIGESTS_JSON" "$staging/${file}" > "${tmp}" <<'PY'
-import json, os, shutil, sys, yaml
-from pathlib import Path
+  resolved_source_mode="${PACK_COMPONENT_SOURCE}"
+  if [[ "${resolved_source_mode}" == "auto" && "${use_local}" == "1" ]]; then
+    resolved_source_mode="local"
+  fi
 
-component_digests_path, validator_digests_path, manifest_path = sys.argv[1:4]
+  # Rewrite component URIs and detect unresolvable external components.
+  has_external_unresolved=0
+  if [[ -f "${DIGESTS_JSON}" || -f "${VALIDATOR_DIGESTS_JSON}" ]]; then
+    tmp="${staging}/gtpack.tmp.yaml"
+    has_external_unresolved=$(PACK_COMPONENT_SOURCE="${resolved_source_mode}" python3 - "$DIGESTS_JSON" "$VALIDATOR_DIGESTS_JSON" "$staging/gtpack.yaml" "${use_local}" "${ROOT_DIR}/target/components" "${tmp}" <<'PY'
+import json, os, sys, yaml
+
+component_digests_path, validator_digests_path, manifest_path, use_local_flag, components_dir, out_path = sys.argv[1:7]
 source_mode = os.environ.get("PACK_COMPONENT_SOURCE", "auto").strip().lower()
 if source_mode not in {"auto", "local", "registry"}:
     raise SystemExit(f"unsupported PACK_COMPONENT_SOURCE={source_mode!r}")
 
+use_local = use_local_flag == "1"
+has_unresolved = False
 all_digests = []
 for path in (component_digests_path, validator_digests_path):
     if path and os.path.exists(path):
@@ -189,8 +170,14 @@ for path in (component_digests_path, validator_digests_path):
 digests_by_id = {d["id"]: d for d in all_digests if d.get("id")}
 digests_by_ref = {d["ref"]: d for d in all_digests if d.get("ref")}
 
+def local_file_ref(digest_entry):
+    wasm_path = os.path.join(components_dir, digest_entry.get("path", ""))
+    if os.path.isfile(wasm_path):
+        return f"file://{os.path.abspath(wasm_path)}"
+    return ""
+
 def resolved_ref(digest_entry):
-    local_ref = str(digest_entry.get("local_ref", "")).strip()
+    local_ref = str(digest_entry.get("local_ref", "")).strip() or local_file_ref(digest_entry)
     oci_digest = str(digest_entry.get("oci_digest", "")).strip()
     if source_mode == "local":
         return local_ref or digest_entry["ref"]
@@ -234,69 +221,59 @@ def rewrite_extension_refs(node):
             rewrite_extension_refs(item)
 
 manifest = yaml.safe_load(open(manifest_path))
-manifest_file = Path(manifest_path)
-manifest_dir = manifest_file.parent
-is_pack_yaml = manifest_file.name == "pack.yaml"
 for comp in manifest.get("components", []):
     did = comp.get("id")
-    d = digests_by_id.get(did)
-    if d:
-        comp["uri"] = resolved_ref(d)
-        comp["source"] = resolved_source(d)
-    if is_pack_yaml and d:
-        dest_name = str(d.get("path", "")).strip()
-        selected_ref = str(comp.get("uri", "")).strip()
-        if selected_ref.startswith("file://"):
-            source_path = Path(selected_ref[len("file://"):])
-            dest_dir = manifest_dir / "components"
-            dest_dir.mkdir(exist_ok=True)
-            if not dest_name:
-                dest_name = source_path.name
-            dest_path = dest_dir / dest_name
-            shutil.copy2(source_path, dest_path)
-        if dest_name:
-            comp["wasm"] = f"components/{dest_name}"
+    digest_entry = digests_by_id.get(did)
+    if digest_entry:
+        comp["uri"] = resolved_ref(digest_entry)
+        comp["source"] = resolved_source(digest_entry)
+    elif use_local:
+        has_unresolved = True
+        print(f"  external component not available locally: {did}", file=sys.stderr)
 rewrite_extension_refs(manifest.get("extensions", {}))
-yaml.safe_dump(manifest, sys.stdout, sort_keys=False)
+with open(out_path, "w") as f:
+    yaml.safe_dump(manifest, f, sort_keys=False)
+print("1" if has_unresolved else "0")
 PY
-      mv "${tmp}" "${staging}/${file}"
-    done
+    )
+    if [[ -f "${tmp}" ]]; then
+      mv "${tmp}" "${staging}/gtpack.yaml"
+    fi
   fi
 
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
+  if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
+    echo "::warning::Skipping resolve/build/doctor for secrets-${slug}: external components not available locally (dry-run only)"
+    continue
+  fi
+
   LOCK_FILE="${staging}/pack.lock.json"
   greentic-pack resolve --in "${staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-  pack_build_cmd=(
-    greentic-pack build
-    --in "${staging}"
-    --lock "${LOCK_FILE}"
-    --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack"
-    --bundle "${PACK_BUNDLE_MODE}"
-  )
-  if [[ "${#PACK_MODE_ARGS[@]}" -gt 0 ]]; then
-    pack_build_cmd+=("${PACK_MODE_ARGS[@]}")
-  fi
-  if [[ "${#PACK_BUILD_ARGS[@]}" -gt 0 ]]; then
-    pack_build_cmd+=("${PACK_BUILD_ARGS[@]}")
-  fi
-  pack_build_cmd+=(--allow-oci-tags)
-  "${pack_build_cmd[@]}"
-  greentic-pack doctor \
-    --validate \
-    --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --validator-pack "${VALIDATOR_PACK}" \
+  greentic-pack build \
+    --in "${staging}" \
+    --lock "${LOCK_FILE}" \
+    --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
+    --bundle none \
     "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags
+  if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+    greentic-pack doctor \
+      --validate \
+      --pack "${OUT_DIR}/secrets-${slug}.gtpack" \
+      --validator-pack "${VALIDATOR_PACK}" \
+      "${PACK_MODE_ARGS[@]}" \
+      --allow-oci-tags
+  fi
 
   echo "::notice::built pack secrets-${slug}.gtpack"
   built_gtpacks+=("${OUT_DIR}/secrets-${slug}.gtpack")
 
   # Include in bundle deps.
   {
-    echo "- alias: ${slug}"
-    echo "  pack_id: greentic.secrets.${slug}"
-    echo "  version_req: \"=${VERSION}\""
+    echo "  - alias: ${slug}"
+    echo "    pack_id: greentic.secrets.${slug}"
+    echo "    version_req: \"=${VERSION}\""
   } >> "${bundle_staging}/deps.tmp"
 done
 
@@ -306,53 +283,42 @@ fi
 
 echo "${VERSION}" > "${OUT_DIR}/VERSION"
 
+if [[ ! -s "${bundle_deps}" ]]; then
+  echo "::warning::No provider packs were built — skipping bundle pack"
+  rm -f "${bundle_deps}"
+  exit 0
+fi
+
 # Build bundle pack with packc.
-python3 - "${bundle_staging}/deps.tmp" "${bundle_staging}/pack.yaml" "${VERSION}" <<'PY'
-import sys
-import yaml
-
-deps_path, pack_path, version = sys.argv[1:4]
-with open(deps_path) as fh:
-    dependencies = yaml.safe_load(fh) or []
-
-manifest = {
-    "pack_id": "greentic.secrets.providers",
-    "version": version,
-    "kind": "library",
-    "publisher": "Greentic",
-    "components": [],
-    "dependencies": dependencies,
-    "flows": [],
-    "assets": [],
-}
-
-with open(pack_path, "w") as fh:
-    yaml.safe_dump(manifest, fh, sort_keys=False)
-PY
+cat >"${bundle_staging}/pack.yaml" <<EOF
+pack_id: greentic.secrets.providers
+version: "${VERSION}"
+kind: library
+publisher: Greentic
+components: []
+dependencies:
+$(sed 's/^/  /' "${bundle_staging}/deps.tmp")
+flows: []
+assets: []
+EOF
 rm -f "${bundle_staging}/deps.tmp"
 
 LOCK_FILE="${bundle_staging}/pack.lock.json"
 greentic-pack resolve --in "${bundle_staging}" --lock "${LOCK_FILE}" "${PACK_MODE_ARGS[@]}"
-pack_build_cmd=(
-  greentic-pack build
-  --in "${bundle_staging}"
-  --lock "${LOCK_FILE}"
-  --gtpack-out "${OUT_DIR}/secrets-providers.gtpack"
-  --bundle "${PACK_BUNDLE_MODE}"
-)
-if [[ "${#PACK_MODE_ARGS[@]}" -gt 0 ]]; then
-  pack_build_cmd+=("${PACK_MODE_ARGS[@]}")
-fi
-if [[ "${#PACK_BUILD_ARGS[@]}" -gt 0 ]]; then
-  pack_build_cmd+=("${PACK_BUILD_ARGS[@]}")
-fi
-pack_build_cmd+=(--allow-oci-tags)
-"${pack_build_cmd[@]}"
-greentic-pack doctor \
-  --validate \
-  --pack "${OUT_DIR}/secrets-providers.gtpack" \
-  --validator-pack "${VALIDATOR_PACK}" \
+greentic-pack build \
+  --in "${bundle_staging}" \
+  --lock "${LOCK_FILE}" \
+  --gtpack-out "${OUT_DIR}/secrets-providers.gtpack" \
+  --bundle none \
   "${PACK_MODE_ARGS[@]}" \
   --allow-oci-tags
+if [[ "${SKIP_DOCTOR}" != "1" ]]; then
+  greentic-pack doctor \
+    --validate \
+    --pack "${OUT_DIR}/secrets-providers.gtpack" \
+    --validator-pack "${VALIDATOR_PACK}" \
+    "${PACK_MODE_ARGS[@]}" \
+    --allow-oci-tags
+fi
 
 echo "::notice::built bundle pack secrets-providers.gtpack"

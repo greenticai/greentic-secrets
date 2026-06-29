@@ -758,10 +758,9 @@ fn sanitize_label(value: &str) -> String {
         match ch {
             'a'..='z' | '0'..='9' => label.push(ch),
             'A'..='Z' => label.push(ch.to_ascii_lowercase()),
-            '-' | '_' | '.' if !label.ends_with('-') => {
+            '-' | '_' | '.' | '/' if !label.ends_with('-') => {
                 label.push('-');
             }
-            '-' | '_' | '.' => {}
             _ => {}
         }
     }
@@ -804,6 +803,14 @@ fn join_labels(labels: &[String], max_len: usize) -> String {
     result
 }
 
+/// Build the unique storage key for a secret URI.
+///
+/// This value is only ever fed to [`label_safe_key`], which hashes it into a
+/// K8s-label-safe identifier, so the raw key (with `/` separators) is used
+/// directly. It must NOT be passed through `sanitize_label` first: that maps
+/// `/`, `_`, `-` and `.` all to `-` and collapses repeats, which folds distinct
+/// URIs (e.g. `_/a-b/c` and `_/a/b-c`) into the same key — causing cross-secret
+/// label collisions and version bleed on read.
 fn canonical_storage_key(uri: &SecretUri) -> String {
     format!(
         "{}/{}/{}/{}/{}",
@@ -853,7 +860,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use greentic_secrets_spec::Scope;
+    use greentic_secrets_spec::{Scope, SecretUri};
     use serial_test::serial;
     use std::env;
 
@@ -893,6 +900,31 @@ mod tests {
             "must start and end with alphanumeric: {value}"
         );
         assert_eq!(label_safe_key(canonical), value, "must be deterministic");
+    }
+
+    #[test]
+    fn canonical_storage_key_does_not_collide_across_segment_boundaries() {
+        // Two distinct secrets that differ only in where a hyphen falls between
+        // the category and name segments. The old code sanitized the canonical
+        // key (mapping `/`, `_`, `-`, `.` all to `-`), folding both into the same
+        // storage key and label — causing cross-secret version bleed on read.
+        let scope_a =
+            Scope::new(String::from("env"), String::from("tenant"), None).expect("scope a");
+        let scope_b =
+            Scope::new(String::from("env"), String::from("tenant"), None).expect("scope b");
+        let uri1 = SecretUri::new(scope_a, "a-b", "c").expect("uri1");
+        let uri2 = SecretUri::new(scope_b, "a", "b-c").expect("uri2");
+
+        assert_ne!(
+            canonical_storage_key(&uri1),
+            canonical_storage_key(&uri2),
+            "distinct URIs must not share a canonical storage key"
+        );
+        assert_ne!(
+            label_safe_key(&canonical_storage_key(&uri1)),
+            label_safe_key(&canonical_storage_key(&uri2)),
+            "distinct URIs must not share a Kubernetes label"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
