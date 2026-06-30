@@ -23,7 +23,6 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::Digest;
 use std::env;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,7 +35,6 @@ const SECRETS_API_VERSION: &str = "7.4";
 const KEYS_API_VERSION: &str = "7.4";
 const DEFAULT_PREFIX: &str = "greentic";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
-const TEAM_PLACEHOLDER: &str = "_";
 
 /// Components returned to the broker wiring.
 pub struct BackendComponents {
@@ -214,6 +212,33 @@ impl AzureSecretsBackend {
         runtime_secret_name(&self.config.secret_prefix, uri)
     }
 
+    /// Pre-fix name for `uri`, used only as a read-fallback so secrets written
+    /// before the collision fix stay resolvable. Never written to. See #101.
+    fn legacy_secret_name(&self, uri: &SecretUri) -> String {
+        legacy_runtime_secret_name(&self.config.secret_prefix, uri)
+    }
+
+    /// Resolve the storage name that currently backs `uri` along with its
+    /// versions, preferring the collision-safe name and falling back to the
+    /// legacy name. Reading new-first keeps the fast path single-call; the
+    /// legacy probe only runs when the new name has no versions. Operations
+    /// write back to the resolved name so a secret's history never splits.
+    fn resolve_versions(&self, uri: &SecretUri) -> SecretsResult<(String, Vec<StoredSecret>)> {
+        let name = self.secret_name(uri);
+        let versions = self.load_all_versions(&name)?;
+        if !versions.is_empty() {
+            return Ok((name, versions));
+        }
+        let legacy = self.legacy_secret_name(uri);
+        if legacy != name {
+            let legacy_versions = self.load_all_versions(&legacy)?;
+            if !legacy_versions.is_empty() {
+                return Ok((legacy, legacy_versions));
+            }
+        }
+        Ok((name, versions))
+    }
+
     fn send(
         &self,
         method: Method,
@@ -374,8 +399,7 @@ impl AzureSecretsBackend {
 
 impl SecretsBackend for AzureSecretsBackend {
     fn put(&self, record: SecretRecord) -> SecretsResult<SecretVersion> {
-        let secret_name = self.secret_name(&record.meta.uri);
-        let versions = self.load_all_versions(&secret_name)?;
+        let (secret_name, versions) = self.resolve_versions(&record.meta.uri)?;
         let next_version = versions
             .iter()
             .map(|entry| entry.version)
@@ -393,19 +417,36 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn get(&self, uri: &SecretUri, version: Option<u64>) -> SecretsResult<Option<VersionedSecret>> {
-        let name = self.secret_name(uri);
         if let Some(requested) = version {
-            let versions = self.load_all_versions(&name)?;
+            let (_, versions) = self.resolve_versions(uri)?;
             return Ok(versions
                 .into_iter()
                 .find(|entry| entry.version == requested && !entry.deleted)
                 .and_then(StoredSecret::into_versioned));
         }
 
-        match self.get_latest(&name)? {
-            Some(entry) if !entry.deleted => Ok(entry.into_versioned()),
-            _ => Ok(None),
+        // Latest-only fast path: the new name is authoritative when present
+        // (a tombstone there means the secret is deleted). Only fall back to
+        // the legacy name when the new name has no object at all.
+        let name = self.secret_name(uri);
+        if let Some(entry) = self.get_latest(&name)? {
+            return Ok(if entry.deleted {
+                None
+            } else {
+                entry.into_versioned()
+            });
         }
+        let legacy = self.legacy_secret_name(uri);
+        if legacy != name
+            && let Some(entry) = self.get_latest(&legacy)?
+        {
+            return Ok(if entry.deleted {
+                None
+            } else {
+                entry.into_versioned()
+            });
+        }
+        Ok(None)
     }
 
     fn list(
@@ -493,8 +534,7 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn delete(&self, uri: &SecretUri) -> SecretsResult<SecretVersion> {
-        let name = self.secret_name(uri);
-        let versions = self.load_all_versions(&name)?;
+        let (name, versions) = self.resolve_versions(uri)?;
         if versions.is_empty() {
             return Err(SecretsError::NotFound {
                 entity: uri.to_string(),
@@ -517,9 +557,8 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn versions(&self, uri: &SecretUri) -> SecretsResult<Vec<SecretVersion>> {
-        let name = self.secret_name(uri);
-        Ok(self
-            .load_all_versions(&name)?
+        let (_, versions) = self.resolve_versions(uri)?;
+        Ok(versions
             .into_iter()
             .map(|entry| SecretVersion {
                 version: entry.version,
@@ -529,9 +568,7 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn exists(&self, uri: &SecretUri) -> SecretsResult<bool> {
-        Ok(self
-            .get_latest(&self.secret_name(uri))?
-            .is_some_and(|entry| !entry.deleted))
+        Ok(self.get(uri, None)?.is_some())
     }
 }
 
@@ -856,41 +893,11 @@ fn extract_version_segment(id: &str) -> Option<&str> {
 }
 
 fn runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
-    let base = format!(
-        "{prefix}-{env}-{tenant}-{team}-{category}-{name}",
-        prefix = azure_key_vault_component(namespace_prefix),
-        env = azure_key_vault_component(uri.scope().env()),
-        tenant = azure_key_vault_component(uri.scope().tenant()),
-        team = uri
-            .scope()
-            .team()
-            .map(azure_key_vault_component)
-            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-        category = azure_key_vault_component(uri.category()),
-        name = azure_key_vault_component(uri.name()),
-    );
-
-    if base.len() <= 110 {
-        return base;
-    }
-
-    let mut hasher = sha2::Sha256::new();
-    sha2::Digest::update(&mut hasher, base.as_bytes());
-    let suffix = hex::encode(&sha2::Digest::finalize(hasher)[..6]);
-    let mut truncated = base[..110].to_string();
-    truncated.push('-');
-    truncated.push_str(&suffix);
-    truncated
+    greentic_secrets_spec::azure_key_vault_secret_name(namespace_prefix, uri)
 }
 
-fn azure_key_vault_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| match c {
-            '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c.to_ascii_lowercase(),
-            _ => '-',
-        })
-        .collect()
+fn legacy_runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
+    greentic_secrets_spec::legacy_azure_key_vault_secret_name(namespace_prefix, uri)
 }
 
 #[cfg(test)]
@@ -942,9 +949,19 @@ mod tests {
         let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
             .expect("valid uri");
 
+        // Writes use the collision-safe spec derivation; the legacy fallback
+        // mirrors the spec legacy derivation; the two must differ.
         assert_eq!(
             runtime_secret_name("greentic", &uri),
             greentic_secrets_spec::azure_key_vault_secret_name("greentic", &uri)
+        );
+        assert_eq!(
+            legacy_runtime_secret_name("greentic", &uri),
+            greentic_secrets_spec::legacy_azure_key_vault_secret_name("greentic", &uri)
+        );
+        assert_ne!(
+            runtime_secret_name("greentic", &uri),
+            legacy_runtime_secret_name("greentic", &uri)
         );
     }
 }

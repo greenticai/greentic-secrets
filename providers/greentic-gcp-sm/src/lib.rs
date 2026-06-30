@@ -26,7 +26,6 @@ const SECRET_MANAGER_ENDPOINT: &str = "https://secretmanager.googleapis.com/v1";
 const KMS_ENDPOINT: &str = "https://cloudkms.googleapis.com/v1";
 const DEFAULT_PREFIX: &str = "greentic";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
-const TEAM_PLACEHOLDER: &str = "_";
 
 fn read_response_body(response: HttpResponse) -> SecretsResult<(StatusCode, String)> {
     let status = response.status();
@@ -142,6 +141,32 @@ impl GcpSecretsBackend {
 
     fn secret_id(&self, uri: &SecretUri) -> String {
         runtime_secret_id(&self.config.secret_prefix, uri)
+    }
+
+    /// Pre-fix id for `uri`, used only as a read-fallback so secrets written
+    /// before the collision fix stay resolvable. Never written to. See #102.
+    fn legacy_secret_id(&self, uri: &SecretUri) -> String {
+        legacy_runtime_secret_id(&self.config.secret_prefix, uri)
+    }
+
+    /// Resolve the secret id that currently backs `uri` along with its versions,
+    /// preferring the collision-safe id and falling back to the legacy id. The
+    /// legacy probe only runs when the new id has no versions. Operations write
+    /// back to the resolved id so a secret's history never splits.
+    fn resolve_versions(&self, uri: &SecretUri) -> SecretsResult<(String, Vec<StoredSecret>)> {
+        let secret_id = self.secret_id(uri);
+        let versions = self.load_all_versions(&secret_id)?;
+        if !versions.is_empty() {
+            return Ok((secret_id, versions));
+        }
+        let legacy = self.legacy_secret_id(uri);
+        if legacy != secret_id {
+            let legacy_versions = self.load_all_versions(&legacy)?;
+            if !legacy_versions.is_empty() {
+                return Ok((legacy, legacy_versions));
+            }
+        }
+        Ok((secret_id, versions))
     }
 
     fn secret_resource(&self, secret_id: &str) -> String {
@@ -352,10 +377,12 @@ impl GcpSecretsBackend {
 
 impl SecretsBackend for GcpSecretsBackend {
     fn put(&self, record: SecretRecord) -> SecretsResult<SecretVersion> {
-        let secret_id = self.secret_id(&record.meta.uri);
-        self.ensure_secret_exists(&secret_id)?;
-
-        let versions = self.load_all_versions(&secret_id)?;
+        let (secret_id, versions) = self.resolve_versions(&record.meta.uri)?;
+        // Create the container only for a brand-new secret; an existing secret
+        // (under the new or legacy id) already has its container.
+        if versions.is_empty() {
+            self.ensure_secret_exists(&secret_id)?;
+        }
         let next_version = versions
             .iter()
             .map(|stored| stored.version)
@@ -373,19 +400,36 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn get(&self, uri: &SecretUri, version: Option<u64>) -> SecretsResult<Option<VersionedSecret>> {
-        let secret_id = self.secret_id(uri);
         if let Some(requested) = version {
-            let versions = self.load_all_versions(&secret_id)?;
+            let (_, versions) = self.resolve_versions(uri)?;
             return Ok(versions
                 .into_iter()
                 .find(|stored| stored.version == requested && !stored.deleted)
                 .and_then(|stored| stored.into_versioned()));
         }
 
-        match self.fetch_latest(&secret_id)? {
-            Some(stored) if !stored.deleted => Ok(stored.into_versioned()),
-            _ => Ok(None),
+        // Latest-only fast path: the new id is authoritative when present (a
+        // tombstone there means deleted). Fall back to the legacy id only when
+        // the new id has no object at all.
+        let secret_id = self.secret_id(uri);
+        if let Some(stored) = self.fetch_latest(&secret_id)? {
+            return Ok(if stored.deleted {
+                None
+            } else {
+                stored.into_versioned()
+            });
         }
+        let legacy = self.legacy_secret_id(uri);
+        if legacy != secret_id
+            && let Some(stored) = self.fetch_latest(&legacy)?
+        {
+            return Ok(if stored.deleted {
+                None
+            } else {
+                stored.into_versioned()
+            });
+        }
+        Ok(None)
     }
 
     fn list(
@@ -453,8 +497,7 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn delete(&self, uri: &SecretUri) -> SecretsResult<SecretVersion> {
-        let secret_id = self.secret_id(uri);
-        let versions = self.load_all_versions(&secret_id)?;
+        let (secret_id, versions) = self.resolve_versions(uri)?;
         if versions.is_empty() {
             return Err(SecretsError::NotFound {
                 entity: uri.to_string(),
@@ -477,9 +520,8 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn versions(&self, uri: &SecretUri) -> SecretsResult<Vec<SecretVersion>> {
-        let secret_id = self.secret_id(uri);
-        Ok(self
-            .load_all_versions(&secret_id)?
+        let (_, versions) = self.resolve_versions(uri)?;
+        Ok(versions
             .into_iter()
             .map(|stored| SecretVersion {
                 version: stored.version,
@@ -660,35 +702,11 @@ struct SecretListEntry {
 }
 
 fn runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
-    let mut id = format!(
-        "{}-{}-{}-{}-{}-{}",
-        gcp_secret_manager_component(namespace_prefix),
-        gcp_secret_manager_component(uri.scope().env()),
-        gcp_secret_manager_component(uri.scope().tenant()),
-        uri.scope()
-            .team()
-            .map(gcp_secret_manager_component)
-            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-        gcp_secret_manager_component(uri.category()),
-        gcp_secret_manager_component(uri.name()),
-    );
-
-    if id.len() > 250 {
-        id.truncate(250);
-    }
-    id
+    greentic_secrets_spec::gcp_secret_manager_secret_id(namespace_prefix, uri)
 }
 
-fn gcp_secret_manager_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| match c {
-            '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c,
-            '_' => '_',
-            _ => '-',
-        })
-        .collect::<String>()
-        .to_lowercase()
+fn legacy_runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
+    greentic_secrets_spec::legacy_gcp_secret_manager_secret_id(namespace_prefix, uri)
 }
 
 #[cfg(test)]
@@ -701,9 +719,19 @@ mod tests {
         let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
             .expect("valid uri");
 
+        // Writes use the collision-safe spec derivation; the legacy fallback
+        // mirrors the spec legacy derivation; the two must differ.
         assert_eq!(
             runtime_secret_id("greentic", &uri),
             gcp_secret_manager_secret_id("greentic", &uri)
+        );
+        assert_eq!(
+            legacy_runtime_secret_id("greentic", &uri),
+            greentic_secrets_spec::legacy_gcp_secret_manager_secret_id("greentic", &uri)
+        );
+        assert_ne!(
+            runtime_secret_id("greentic", &uri),
+            legacy_runtime_secret_id("greentic", &uri)
         );
     }
 }
