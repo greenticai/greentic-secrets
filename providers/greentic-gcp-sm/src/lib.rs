@@ -26,7 +26,6 @@ const SECRET_MANAGER_ENDPOINT: &str = "https://secretmanager.googleapis.com/v1";
 const KMS_ENDPOINT: &str = "https://cloudkms.googleapis.com/v1";
 const DEFAULT_PREFIX: &str = "greentic";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
-const TEAM_PLACEHOLDER: &str = "_";
 
 fn read_response_body(response: HttpResponse) -> SecretsResult<(StatusCode, String)> {
     let status = response.status();
@@ -142,6 +141,52 @@ impl GcpSecretsBackend {
 
     fn secret_id(&self, uri: &SecretUri) -> String {
         runtime_secret_id(&self.config.secret_prefix, uri)
+    }
+
+    /// Pre-fix id for `uri`, used only as a read-fallback so secrets written
+    /// before the collision fix stay resolvable. Never written to. See #102.
+    fn legacy_secret_id(&self, uri: &SecretUri) -> String {
+        legacy_runtime_secret_id(&self.config.secret_prefix, uri)
+    }
+
+    /// Versions stored under the legacy id that are attributable to `uri`.
+    ///
+    /// The legacy id can be shared by colliding URIs (the bug this fix removes),
+    /// so a non-empty legacy resource does NOT imply the data is `uri`'s. If any
+    /// record under it names a different URI we ignore the whole resource:
+    /// serving or extending it would re-introduce the collision. Reads then see
+    /// the secret as absent under the (now collision-free) new id, so it can be
+    /// re-provisioned safely. Returns empty when there is no legacy id distinct
+    /// from the new id or no attributable history.
+    fn legacy_versions_for(&self, uri: &SecretUri) -> SecretsResult<Vec<StoredSecret>> {
+        let legacy = self.legacy_secret_id(uri);
+        if legacy == self.secret_id(uri) {
+            return Ok(Vec::new());
+        }
+        let versions = self.load_all_versions(&legacy)?;
+        if versions.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !legacy_history_attributable_to(&versions, uri) {
+            tracing::warn!(
+                uri = %uri,
+                legacy = %legacy,
+                "legacy Secret Manager id is shared by colliding URIs; ignoring legacy history for this URI"
+            );
+            return Ok(Vec::new());
+        }
+        Ok(versions)
+    }
+
+    /// Full version history for `uri`: collision-safe-id versions plus any
+    /// attributable legacy-id versions. New writes always target the
+    /// collision-safe id and continue numbering above the legacy max, so the
+    /// two histories never overlap and the secret is migrated forward on write.
+    fn collect_versions(&self, uri: &SecretUri) -> SecretsResult<Vec<StoredSecret>> {
+        let mut versions = self.load_all_versions(&self.secret_id(uri))?;
+        versions.extend(self.legacy_versions_for(uri)?);
+        versions.sort_by_key(|stored| stored.version);
+        Ok(versions)
     }
 
     fn secret_resource(&self, secret_id: &str) -> String {
@@ -352,10 +397,10 @@ impl GcpSecretsBackend {
 
 impl SecretsBackend for GcpSecretsBackend {
     fn put(&self, record: SecretRecord) -> SecretsResult<SecretVersion> {
-        let secret_id = self.secret_id(&record.meta.uri);
-        self.ensure_secret_exists(&secret_id)?;
-
-        let versions = self.load_all_versions(&secret_id)?;
+        // Always write the collision-safe id; never extend a (possibly shared)
+        // legacy resource. Version numbering continues above any attributable
+        // legacy history so the merged view stays monotonic.
+        let versions = self.collect_versions(&record.meta.uri)?;
         let next_version = versions
             .iter()
             .map(|stored| stored.version)
@@ -363,6 +408,8 @@ impl SecretsBackend for GcpSecretsBackend {
             .unwrap_or(0)
             + 1;
 
+        let secret_id = self.secret_id(&record.meta.uri);
+        self.ensure_secret_exists(&secret_id)?;
         let stored = StoredSecret::live(next_version, record.clone());
         self.write_version(&secret_id, &stored)?;
 
@@ -373,19 +420,32 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn get(&self, uri: &SecretUri, version: Option<u64>) -> SecretsResult<Option<VersionedSecret>> {
-        let secret_id = self.secret_id(uri);
         if let Some(requested) = version {
-            let versions = self.load_all_versions(&secret_id)?;
-            return Ok(versions
+            return Ok(self
+                .collect_versions(uri)?
                 .into_iter()
                 .find(|stored| stored.version == requested && !stored.deleted)
                 .and_then(|stored| stored.into_versioned()));
         }
 
-        match self.fetch_latest(&secret_id)? {
-            Some(stored) if !stored.deleted => Ok(stored.into_versioned()),
-            _ => Ok(None),
+        // Latest-only fast path: new writes always go to the collision-safe id,
+        // so if it has any version that version is the global latest (a
+        // tombstone there means deleted). Only when the new id is absent do we
+        // consult the attributable legacy history.
+        let secret_id = self.secret_id(uri);
+        if let Some(stored) = self.fetch_latest(&secret_id)? {
+            return Ok(if stored.deleted {
+                None
+            } else {
+                stored.into_versioned()
+            });
         }
+        Ok(self
+            .legacy_versions_for(uri)?
+            .into_iter()
+            .max_by_key(|stored| stored.version)
+            .filter(|stored| !stored.deleted)
+            .and_then(|stored| stored.into_versioned()))
     }
 
     fn list(
@@ -453,8 +513,7 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn delete(&self, uri: &SecretUri) -> SecretsResult<SecretVersion> {
-        let secret_id = self.secret_id(uri);
-        let versions = self.load_all_versions(&secret_id)?;
+        let versions = self.collect_versions(uri)?;
         if versions.is_empty() {
             return Err(SecretsError::NotFound {
                 entity: uri.to_string(),
@@ -467,6 +526,12 @@ impl SecretsBackend for GcpSecretsBackend {
             .max()
             .unwrap_or(0)
             + 1;
+        // Tombstone on the collision-safe id; ensure its container exists (the
+        // secret may have lived only under the legacy id until now). The
+        // tombstone shadows any legacy live version because it numbers above
+        // the legacy max.
+        let secret_id = self.secret_id(uri);
+        self.ensure_secret_exists(&secret_id)?;
         let tombstone = StoredSecret::tombstone(next_version);
         self.write_version(&secret_id, &tombstone)?;
 
@@ -477,9 +542,8 @@ impl SecretsBackend for GcpSecretsBackend {
     }
 
     fn versions(&self, uri: &SecretUri) -> SecretsResult<Vec<SecretVersion>> {
-        let secret_id = self.secret_id(uri);
         Ok(self
-            .load_all_versions(&secret_id)?
+            .collect_versions(uri)?
             .into_iter()
             .map(|stored| SecretVersion {
                 version: stored.version,
@@ -659,36 +723,26 @@ struct SecretListEntry {
     name: String,
 }
 
-fn runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
-    let mut id = format!(
-        "{}-{}-{}-{}-{}-{}",
-        gcp_secret_manager_component(namespace_prefix),
-        gcp_secret_manager_component(uri.scope().env()),
-        gcp_secret_manager_component(uri.scope().tenant()),
-        uri.scope()
-            .team()
-            .map(gcp_secret_manager_component)
-            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
-        gcp_secret_manager_component(uri.category()),
-        gcp_secret_manager_component(uri.name()),
-    );
-
-    if id.len() > 250 {
-        id.truncate(250);
-    }
-    id
+/// True when every record stored under a (possibly shared) legacy id belongs to
+/// `uri`. A legacy id can collide across distinct URIs — that is the bug this
+/// fix removes — so before treating legacy history as `uri`'s we require that no
+/// stored record names a different URI. Tombstones carry no record and are
+/// treated as `uri`'s.
+fn legacy_history_attributable_to(versions: &[StoredSecret], uri: &SecretUri) -> bool {
+    versions.iter().all(|stored| {
+        stored
+            .record
+            .as_ref()
+            .is_none_or(|rec| rec.meta.uri == *uri)
+    })
 }
 
-fn gcp_secret_manager_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| match c {
-            '0'..='9' | 'a'..='z' | 'A'..='Z' | '-' => c,
-            '_' => '_',
-            _ => '-',
-        })
-        .collect::<String>()
-        .to_lowercase()
+fn runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
+    greentic_secrets_spec::gcp_secret_manager_secret_id(namespace_prefix, uri)
+}
+
+fn legacy_runtime_secret_id(namespace_prefix: &str, uri: &SecretUri) -> String {
+    greentic_secrets_spec::legacy_gcp_secret_manager_secret_id(namespace_prefix, uri)
 }
 
 #[cfg(test)]
@@ -701,9 +755,63 @@ mod tests {
         let uri = SecretUri::parse("secrets://dev/demo/_/messaging-webchat-gui/jwt_signing_key")
             .expect("valid uri");
 
+        // Writes use the collision-safe spec derivation; the legacy fallback
+        // mirrors the spec legacy derivation; the two must differ.
         assert_eq!(
             runtime_secret_id("greentic", &uri),
             gcp_secret_manager_secret_id("greentic", &uri)
         );
+        assert_eq!(
+            legacy_runtime_secret_id("greentic", &uri),
+            greentic_secrets_spec::legacy_gcp_secret_manager_secret_id("greentic", &uri)
+        );
+        assert_ne!(
+            runtime_secret_id("greentic", &uri),
+            legacy_runtime_secret_id("greentic", &uri)
+        );
+    }
+
+    fn stored_for(uri: &SecretUri, version: u64) -> StoredSecret {
+        use greentic_secrets_spec::{
+            ContentType, EncryptionAlgorithm, Envelope, SecretMeta, SecretRecord, Visibility,
+        };
+        let meta = SecretMeta::new(uri.clone(), Visibility::Tenant, ContentType::Opaque);
+        let envelope = Envelope {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            nonce: Vec::new(),
+            hkdf_salt: Vec::new(),
+            wrapped_dek: Vec::new(),
+        };
+        StoredSecret::live(version, SecretRecord::new(meta, Vec::new(), envelope))
+    }
+
+    #[test]
+    fn legacy_history_attribution_guards_colliding_uris() {
+        // `category=a, name=b-c` vs `category=a-b, name=c` collide under the
+        // legacy derivation (the bug) but get distinct collision-safe ids.
+        let a = SecretUri::parse("secrets://dev/demo/_/a/b-c").unwrap();
+        let b = SecretUri::parse("secrets://dev/demo/_/a-b/c").unwrap();
+        assert_eq!(
+            legacy_runtime_secret_id("p", &a),
+            legacy_runtime_secret_id("p", &b)
+        );
+        assert_ne!(runtime_secret_id("p", &a), runtime_secret_id("p", &b));
+
+        // A legacy bucket holding A's record is A's, but must NOT be attributed
+        // to B — otherwise B's first write would land in A's secret and re-
+        // introduce the collision this fix removes.
+        let a_bucket = [stored_for(&a, 1)];
+        assert!(legacy_history_attributable_to(&a_bucket, &a));
+        assert!(!legacy_history_attributable_to(&a_bucket, &b));
+
+        // Tombstones carry no record and pass; a mixed bucket is rejected.
+        assert!(legacy_history_attributable_to(
+            &[StoredSecret::tombstone(9)],
+            &a
+        ));
+        assert!(!legacy_history_attributable_to(
+            &[stored_for(&a, 1), stored_for(&b, 2)],
+            &a
+        ));
     }
 }
