@@ -741,15 +741,38 @@ fn namespace_for_scope(config: &K8sProviderConfig, scope: &Scope) -> String {
     join_labels(&labels, NAMESPACE_MAX_LEN)
 }
 
+/// Build the Kubernetes `.metadata.name` for a secret object at a version.
+///
+/// The readable prefix (sanitized segments) is kept for `kubectl`
+/// debuggability but is NOT relied on for uniqueness: `sanitize_label` folds
+/// `/`, `-`, `_`, `.` all to `-`, so distinct URIs can sanitize to the same
+/// prefix (e.g. `category=a-b,name=c` vs `category=a,name=b-c`, or
+/// `name=a_b` vs `name=a-b`). The `-<hash>` suffix hashes the raw
+/// [`canonical_storage_key`] (boundary-preserving via `/`) plus the version
+/// tag, so two distinct URIs never share a resource name at the same version
+/// — a duplicate `.metadata.name` would otherwise be a 409 on write
+/// (denial-of-write for the second secret).
 fn secret_resource_name(uri: &SecretUri, version: u64) -> String {
+    let version_tag = format!("v{version:04}");
+
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_storage_key(uri).as_bytes());
+    hasher.update(b"/");
+    hasher.update(version_tag.as_bytes());
+    let digest = hasher.finalize();
+    let hash_suffix = hex_lower(&digest[..8]); // 16 hex chars, 64-bit
+
     let mut labels = Vec::new();
     if let Some(team) = uri.scope().team() {
         labels.push(sanitize_label(team));
     }
     labels.push(sanitize_label(uri.category()));
     labels.push(sanitize_label(uri.name()));
-    labels.push(sanitize_label(&format!("v{version:04}")));
-    join_labels(&labels, SECRET_NAME_MAX_LEN)
+    labels.push(sanitize_label(&version_tag));
+    // Reserve room for the "-<hash>" suffix (1 + 16 chars).
+    let prefix = join_labels(&labels, SECRET_NAME_MAX_LEN - 1 - hash_suffix.len());
+
+    format!("{prefix}-{hash_suffix}")
 }
 
 fn sanitize_label(value: &str) -> String {
@@ -924,6 +947,78 @@ mod tests {
             label_safe_key(&canonical_storage_key(&uri1)),
             label_safe_key(&canonical_storage_key(&uri2)),
             "distinct URIs must not share a Kubernetes label"
+        );
+    }
+
+    #[test]
+    fn secret_resource_name_does_not_collide_across_segment_boundaries() {
+        // Same fold hazard as the canonical-key test, but for the resource
+        // `.metadata.name`: distinct URIs whose segments differ only in where a
+        // hyphen falls used to produce the same name → a 409 on the second put.
+        let scope_a = Scope::new("env", "tenant", None).expect("scope a");
+        let scope_b = Scope::new("env", "tenant", None).expect("scope b");
+        let uri1 = SecretUri::new(scope_a, "a-b", "c").expect("uri1");
+        let uri2 = SecretUri::new(scope_b, "a", "b-c").expect("uri2");
+
+        assert_ne!(
+            secret_resource_name(&uri1, 1),
+            secret_resource_name(&uri2, 1),
+            "distinct URIs must get distinct resource names at the same version"
+        );
+    }
+
+    #[test]
+    fn secret_resource_name_does_not_collide_across_separator_chars() {
+        // `a-b`, `a_b` and `a.b` all sanitize to `a-b`; the hash suffix keeps
+        // them distinct.
+        let scope_a = Scope::new("env", "tenant", None).expect("scope a");
+        let scope_b = Scope::new("env", "tenant", None).expect("scope b");
+        let uri1 = SecretUri::new(scope_a, "cat", "a-b").expect("uri1");
+        let uri2 = SecretUri::new(scope_b, "cat", "a_b").expect("uri2");
+
+        assert_ne!(
+            secret_resource_name(&uri1, 1),
+            secret_resource_name(&uri2, 1),
+            "`a-b` and `a_b` must get distinct resource names"
+        );
+    }
+
+    #[test]
+    fn secret_resource_name_is_valid_k8s_name() {
+        let scope = Scope::new("env", "tenant", Some("team".to_string())).expect("scope");
+        let uri = SecretUri::new(scope, "category", "name").expect("uri");
+        let name = secret_resource_name(&uri, 42);
+
+        assert!(name.len() <= SECRET_NAME_MAX_LEN, "name too long: {name}");
+        assert!(
+            name.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.'),
+            "must only contain K8s-name-safe chars: {name}"
+        );
+        assert!(
+            name.chars().next().unwrap().is_ascii_alphanumeric()
+                && name.chars().last().unwrap().is_ascii_alphanumeric(),
+            "must start and end with alphanumeric: {name}"
+        );
+    }
+
+    #[test]
+    fn secret_resource_name_is_deterministic() {
+        let scope = Scope::new("env", "tenant", None).expect("scope");
+        let uri = SecretUri::new(scope, "cat", "name").expect("uri");
+        assert_eq!(secret_resource_name(&uri, 1), secret_resource_name(&uri, 1));
+    }
+
+    #[test]
+    fn secret_resource_name_truncates_long_segments_and_stays_valid() {
+        let long = "a".repeat(200);
+        let scope = Scope::new("env", "tenant", Some("team".to_string())).expect("scope");
+        let uri = SecretUri::new(scope, long.as_str(), long.as_str()).expect("uri");
+        let name = secret_resource_name(&uri, 99999);
+        assert!(name.len() <= SECRET_NAME_MAX_LEN, "name too long: {name}");
+        assert!(
+            name.chars().last().unwrap().is_ascii_alphanumeric(),
+            "must end with alphanumeric after truncation: {name}"
         );
     }
 
