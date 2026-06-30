@@ -218,25 +218,44 @@ impl AzureSecretsBackend {
         legacy_runtime_secret_name(&self.config.secret_prefix, uri)
     }
 
-    /// Resolve the storage name that currently backs `uri` along with its
-    /// versions, preferring the collision-safe name and falling back to the
-    /// legacy name. Reading new-first keeps the fast path single-call; the
-    /// legacy probe only runs when the new name has no versions. Operations
-    /// write back to the resolved name so a secret's history never splits.
-    fn resolve_versions(&self, uri: &SecretUri) -> SecretsResult<(String, Vec<StoredSecret>)> {
-        let name = self.secret_name(uri);
-        let versions = self.load_all_versions(&name)?;
-        if !versions.is_empty() {
-            return Ok((name, versions));
-        }
+    /// Versions stored under the legacy name that are attributable to `uri`.
+    ///
+    /// The legacy name can be shared by colliding URIs (the bug this fix
+    /// removes), so a non-empty legacy object does NOT imply the data is
+    /// `uri`'s. If any record under it names a different URI we ignore the whole
+    /// object: serving or extending it would re-introduce the collision. Reads
+    /// then see the secret as absent under the (now collision-free) new name,
+    /// so it can be re-provisioned safely. Returns empty when there is no legacy
+    /// name distinct from the new name or no attributable history.
+    fn legacy_versions_for(&self, uri: &SecretUri) -> SecretsResult<Vec<StoredSecret>> {
         let legacy = self.legacy_secret_name(uri);
-        if legacy != name {
-            let legacy_versions = self.load_all_versions(&legacy)?;
-            if !legacy_versions.is_empty() {
-                return Ok((legacy, legacy_versions));
-            }
+        if legacy == self.secret_name(uri) {
+            return Ok(Vec::new());
         }
-        Ok((name, versions))
+        let versions = self.load_all_versions(&legacy)?;
+        if versions.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !legacy_history_attributable_to(&versions, uri) {
+            tracing::warn!(
+                uri = %uri,
+                legacy = %legacy,
+                "legacy Key Vault name is shared by colliding URIs; ignoring legacy history for this URI"
+            );
+            return Ok(Vec::new());
+        }
+        Ok(versions)
+    }
+
+    /// Full version history for `uri`: collision-safe-name versions plus any
+    /// attributable legacy-name versions. New writes always target the
+    /// collision-safe name and continue numbering above the legacy max, so the
+    /// two histories never overlap and the secret is migrated forward on write.
+    fn collect_versions(&self, uri: &SecretUri) -> SecretsResult<Vec<StoredSecret>> {
+        let mut versions = self.load_all_versions(&self.secret_name(uri))?;
+        versions.extend(self.legacy_versions_for(uri)?);
+        versions.sort_by_key(|entry| entry.version);
+        Ok(versions)
     }
 
     fn send(
@@ -399,7 +418,10 @@ impl AzureSecretsBackend {
 
 impl SecretsBackend for AzureSecretsBackend {
     fn put(&self, record: SecretRecord) -> SecretsResult<SecretVersion> {
-        let (secret_name, versions) = self.resolve_versions(&record.meta.uri)?;
+        // Always write the collision-safe name; never extend a (possibly
+        // shared) legacy object. Version numbering continues above any
+        // attributable legacy history so the merged view stays monotonic.
+        let versions = self.collect_versions(&record.meta.uri)?;
         let next_version = versions
             .iter()
             .map(|entry| entry.version)
@@ -408,7 +430,7 @@ impl SecretsBackend for AzureSecretsBackend {
             .saturating_add(1);
 
         let stored = StoredSecret::live(next_version, record.clone());
-        self.set_secret(&secret_name, &stored)?;
+        self.set_secret(&self.secret_name(&record.meta.uri), &stored)?;
 
         Ok(SecretVersion {
             version: next_version,
@@ -418,16 +440,17 @@ impl SecretsBackend for AzureSecretsBackend {
 
     fn get(&self, uri: &SecretUri, version: Option<u64>) -> SecretsResult<Option<VersionedSecret>> {
         if let Some(requested) = version {
-            let (_, versions) = self.resolve_versions(uri)?;
-            return Ok(versions
+            return Ok(self
+                .collect_versions(uri)?
                 .into_iter()
                 .find(|entry| entry.version == requested && !entry.deleted)
                 .and_then(StoredSecret::into_versioned));
         }
 
-        // Latest-only fast path: the new name is authoritative when present
-        // (a tombstone there means the secret is deleted). Only fall back to
-        // the legacy name when the new name has no object at all.
+        // Latest-only fast path: new writes always go to the collision-safe
+        // name, so if it has any version that version is the global latest
+        // (a tombstone there means deleted). Only when the new name is absent
+        // do we consult the attributable legacy history.
         let name = self.secret_name(uri);
         if let Some(entry) = self.get_latest(&name)? {
             return Ok(if entry.deleted {
@@ -436,17 +459,12 @@ impl SecretsBackend for AzureSecretsBackend {
                 entry.into_versioned()
             });
         }
-        let legacy = self.legacy_secret_name(uri);
-        if legacy != name
-            && let Some(entry) = self.get_latest(&legacy)?
-        {
-            return Ok(if entry.deleted {
-                None
-            } else {
-                entry.into_versioned()
-            });
-        }
-        Ok(None)
+        Ok(self
+            .legacy_versions_for(uri)?
+            .into_iter()
+            .max_by_key(|entry| entry.version)
+            .filter(|entry| !entry.deleted)
+            .and_then(StoredSecret::into_versioned))
     }
 
     fn list(
@@ -534,7 +552,7 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn delete(&self, uri: &SecretUri) -> SecretsResult<SecretVersion> {
-        let (name, versions) = self.resolve_versions(uri)?;
+        let versions = self.collect_versions(uri)?;
         if versions.is_empty() {
             return Err(SecretsError::NotFound {
                 entity: uri.to_string(),
@@ -547,8 +565,10 @@ impl SecretsBackend for AzureSecretsBackend {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
+        // Tombstone on the collision-safe name; it shadows any legacy live
+        // version because it numbers above the legacy max.
         let tombstone = StoredSecret::tombstone(next_version);
-        self.set_secret(&name, &tombstone)?;
+        self.set_secret(&self.secret_name(uri), &tombstone)?;
 
         Ok(SecretVersion {
             version: next_version,
@@ -557,8 +577,8 @@ impl SecretsBackend for AzureSecretsBackend {
     }
 
     fn versions(&self, uri: &SecretUri) -> SecretsResult<Vec<SecretVersion>> {
-        let (_, versions) = self.resolve_versions(uri)?;
-        Ok(versions
+        Ok(self
+            .collect_versions(uri)?
             .into_iter()
             .map(|entry| SecretVersion {
                 version: entry.version,
@@ -892,6 +912,17 @@ fn extract_version_segment(id: &str) -> Option<&str> {
     id.split('/').nth_back(0)
 }
 
+/// True when every record stored under a (possibly shared) legacy name belongs
+/// to `uri`. A legacy name can collide across distinct URIs — that is the bug
+/// this fix removes — so before treating legacy history as `uri`'s we require
+/// that no stored record names a different URI. Tombstones carry no record and
+/// are treated as `uri`'s.
+fn legacy_history_attributable_to(versions: &[StoredSecret], uri: &SecretUri) -> bool {
+    versions
+        .iter()
+        .all(|entry| entry.record.as_ref().is_none_or(|rec| rec.meta.uri == *uri))
+}
+
 fn runtime_secret_name(namespace_prefix: &str, uri: &SecretUri) -> String {
     greentic_secrets_spec::azure_key_vault_secret_name(namespace_prefix, uri)
 }
@@ -963,5 +994,49 @@ mod tests {
             runtime_secret_name("greentic", &uri),
             legacy_runtime_secret_name("greentic", &uri)
         );
+    }
+
+    fn stored_for(uri: &SecretUri, version: u64) -> StoredSecret {
+        use greentic_secrets_spec::{
+            ContentType, EncryptionAlgorithm, Envelope, SecretMeta, SecretRecord, Visibility,
+        };
+        let meta = SecretMeta::new(uri.clone(), Visibility::Tenant, ContentType::Opaque);
+        let envelope = Envelope {
+            algorithm: EncryptionAlgorithm::Aes256Gcm,
+            nonce: Vec::new(),
+            hkdf_salt: Vec::new(),
+            wrapped_dek: Vec::new(),
+        };
+        StoredSecret::live(version, SecretRecord::new(meta, Vec::new(), envelope))
+    }
+
+    #[test]
+    fn legacy_history_attribution_guards_colliding_uris() {
+        // `category=a, name=b-c` vs `category=a-b, name=c` collide under the
+        // legacy derivation (the bug) but get distinct collision-safe names.
+        let a = SecretUri::parse("secrets://dev/demo/_/a/b-c").unwrap();
+        let b = SecretUri::parse("secrets://dev/demo/_/a-b/c").unwrap();
+        assert_eq!(
+            legacy_runtime_secret_name("p", &a),
+            legacy_runtime_secret_name("p", &b)
+        );
+        assert_ne!(runtime_secret_name("p", &a), runtime_secret_name("p", &b));
+
+        // A legacy bucket holding A's record is A's, but must NOT be attributed
+        // to B — otherwise B's first write would land in A's secret and re-
+        // introduce the collision this fix removes.
+        let a_bucket = [stored_for(&a, 1)];
+        assert!(legacy_history_attributable_to(&a_bucket, &a));
+        assert!(!legacy_history_attributable_to(&a_bucket, &b));
+
+        // Tombstones carry no record and pass; a mixed bucket is rejected.
+        assert!(legacy_history_attributable_to(
+            &[StoredSecret::tombstone(9)],
+            &a
+        ));
+        assert!(!legacy_history_attributable_to(
+            &[stored_for(&a, 1), stored_for(&b, 2)],
+            &a
+        ));
     }
 }

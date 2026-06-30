@@ -173,16 +173,17 @@ fn with_collision_suffix(base: &str, hash: &str, max_len: usize) -> String {
 }
 
 fn azure_readable_base(namespace_prefix: &str, uri: &SecretUri) -> String {
+    // The teamless placeholder is mapped through the Azure component fold like
+    // every other segment: Key Vault names allow only `[0-9a-zA-Z-]`, so the
+    // raw `_` placeholder would otherwise emit an invalid name for the common
+    // teamless URI. Collision-safety is unaffected — the hash suffix derives
+    // from the canonical key, which keeps the raw `_` placeholder.
     format!(
         "{prefix}-{env}-{tenant}-{team}-{category}-{name}",
         prefix = azure_key_vault_component(namespace_prefix),
         env = azure_key_vault_component(uri.scope().env()),
         tenant = azure_key_vault_component(uri.scope().tenant()),
-        team = uri
-            .scope()
-            .team()
-            .map(azure_key_vault_component)
-            .unwrap_or_else(|| TEAM_PLACEHOLDER.to_string()),
+        team = azure_key_vault_component(uri.scope().team().unwrap_or(TEAM_PLACEHOLDER)),
         category = azure_key_vault_component(uri.category()),
         name = azure_key_vault_component(uri.name()),
     )
@@ -365,12 +366,18 @@ mod tests {
         );
 
         // Azure/GCP keep the readable (lossy) base but always append a
-        // collision-free `-<hash>` suffix derived from the canonical key.
+        // collision-free `-<hash>` suffix derived from the canonical key. The
+        // teamless placeholder folds to `-` for Azure (no invalid `_`) but
+        // stays `_` for GCP, which permits it.
         let azure = native_secret_name(AZURE_SECRETS_PROVIDER_ID, "greentic", &uri).unwrap();
-        let azure_base = "greentic-dev-demo-_-messaging-webchat-gui-jwt-signing-key";
+        let azure_base = "greentic-dev-demo---messaging-webchat-gui-jwt-signing-key";
         let azure_suffix = azure.strip_prefix(&format!("{azure_base}-")).unwrap();
         assert!(is_hex16(azure_suffix), "azure suffix not 16 hex: {azure}");
         assert!(azure.len() <= AZURE_SECRET_NAME_MAX_LEN);
+        assert!(
+            azure.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
+            "azure teamless name has an invalid char: {azure}"
+        );
 
         let gcp = native_secret_name(GCP_SECRETS_PROVIDER_ID, "greentic", &uri).unwrap();
         let gcp_base = "greentic-dev-demo-_-messaging-webchat-gui-jwt_signing_key";
@@ -381,15 +388,26 @@ mod tests {
 
     #[test]
     fn legacy_cloud_names_pin_pre_fix_derivation() {
-        // The read-fallback depends on these staying byte-for-byte stable.
+        // The read-fallback depends on the real-team legacy names staying
+        // byte-for-byte stable. The teamless Azure name now folds the
+        // placeholder to `-`; the pre-fix `_` form was an invalid Key Vault
+        // name that could never have persisted data, so nothing relies on it.
         let uri = SecretUri::parse(CANONICAL_URI).expect("valid canonical uri");
         assert_eq!(
             legacy_azure_key_vault_secret_name("greentic", &uri),
-            "greentic-dev-demo-_-messaging-webchat-gui-jwt-signing-key"
+            "greentic-dev-demo---messaging-webchat-gui-jwt-signing-key"
         );
         assert_eq!(
             legacy_gcp_secret_manager_secret_id("greentic", &uri),
             "greentic-dev-demo-_-messaging-webchat-gui-jwt_signing_key"
+        );
+
+        // A real team is folded identically before and after the fix, so its
+        // legacy name is unchanged and pre-fix data stays resolvable.
+        let team_uri = SecretUri::parse("secrets://dev/demo/myteam/cat/name").unwrap();
+        assert_eq!(
+            legacy_azure_key_vault_secret_name("greentic", &team_uri),
+            "greentic-dev-demo-myteam-cat-name"
         );
     }
 
