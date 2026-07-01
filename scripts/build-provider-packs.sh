@@ -317,7 +317,8 @@ PY
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
     --bundle none \
     "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
+    --allow-oci-tags \
+    --allow-pack-schema
   if [[ "${SKIP_DOCTOR}" != "1" ]]; then
     greentic-pack doctor \
       --validate \
