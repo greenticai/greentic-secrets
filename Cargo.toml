@@ -34,7 +34,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
-version = "1.2.0-dev.0"
+version = "1.1.2-dev.0"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -150,122 +150,122 @@ default-features = false
 
 [workspace.dependencies.greentic_secrets_api]
 package = "greentic-secrets-api"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-api"
 
 [workspace.dependencies.greentic_secrets_spec]
 package = "greentic-secrets-spec"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-spec"
 
 [workspace.dependencies.greentic_secrets_core]
 package = "greentic-secrets-core"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-core"
 
 [workspace.dependencies.greentic_secrets_broker]
 package = "greentic-secrets-broker"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-broker"
 
 [workspace.dependencies.secrets_broker]
 package = "greentic-secrets-broker"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-broker"
 
 [workspace.dependencies.greentic_secrets_lib]
 package = "greentic-secrets-lib"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-lib"
 
 [workspace.dependencies.greentic_secrets_provider_dev]
 package = "greentic-secrets-provider-dev"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-dev"
 
 [workspace.dependencies.greentic_secrets_provider_aws_sm]
 package = "greentic-secrets-provider-aws-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-aws-sm"
 
 [workspace.dependencies.greentic_secrets_provider_gcp_sm]
 package = "greentic-secrets-provider-gcp-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-gcp-sm"
 
 [workspace.dependencies.greentic_secrets_provider_azure_kv]
 package = "greentic-secrets-provider-azure-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-azure-kv"
 
 [workspace.dependencies.greentic_secrets_provider_k8s]
 package = "greentic-secrets-provider-k8s"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-k8s"
 
 [workspace.dependencies.greentic_secrets_provider_vault_kv]
 package = "greentic-secrets-provider-vault-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-vault-kv"
 
 [workspace.dependencies.secrets-core]
 package = "greentic-secrets-core"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "greentic-secrets-core"
 
 [workspace.dependencies.secrets-provider-dev]
 package = "greentic-secrets-provider-dev"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-dev"
 
 [workspace.dependencies.secrets-provider-aws-sm]
 package = "greentic-secrets-provider-aws-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-aws-sm"
 
 [workspace.dependencies.secrets-provider-gcp-sm]
 package = "greentic-secrets-provider-gcp-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-gcp-sm"
 
 [workspace.dependencies.secrets-provider-azure-kv]
 package = "greentic-secrets-provider-azure-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-azure-kv"
 
 [workspace.dependencies.secrets-provider-k8s]
 package = "greentic-secrets-provider-k8s"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-k8s"
 
 [workspace.dependencies.secrets-provider-vault-kv]
 package = "greentic-secrets-provider-vault-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-vault-kv"
 
 [workspace.dependencies.greentic_secrets_provider_aws]
 package = "greentic-secrets-provider-aws-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-aws-sm"
 
 [workspace.dependencies.greentic_secrets_provider_azure]
 package = "greentic-secrets-provider-azure-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-azure-kv"
 
 [workspace.dependencies.greentic_secrets_provider_gcp]
 package = "greentic-secrets-provider-gcp-sm"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-gcp-sm"
 
 [workspace.dependencies.greentic_secrets_provider_vault]
 package = "greentic-secrets-provider-vault-kv"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-vault-kv"
 
 [workspace.dependencies.greentic_secrets_provider_dev_env]
 package = "greentic-secrets-provider-dev"
-version = ">=1.2.0-dev, <1.3.0-0"
+version = ">=1.1.2-dev, <1.2.0-0"
 path = "providers/greentic-dev"
 
 [workspace.dependencies.secrets-provider-tests]
