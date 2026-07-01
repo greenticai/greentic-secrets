@@ -241,6 +241,27 @@ PY
     fi
   fi
 
+  # Align pack.yaml's components with gtpack.yaml. The source pack.yaml ships
+  # `components: []`, while gtpack.yaml carries the canonical, now-resolved
+  # (namespace-rewritten + digest-pinned, OCI source) component declarations.
+  # Without this, greentic-pack cannot resolve the flow component refs and fails
+  # with PACK_MISSING_COMPONENT_REFERENCE. Copy the OCI-sourced declarations
+  # verbatim — no bundled `wasm` field — so wasm-less cloud providers resolve
+  # from the registry rather than requiring a locally-built component.
+  if [[ -f "${staging}/gtpack.yaml" && -f "${staging}/pack.yaml" ]]; then
+    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" <<'PY'
+import sys, yaml
+
+gtpack_path, pack_path = sys.argv[1:3]
+gtpack = yaml.safe_load(open(gtpack_path)) or {}
+pack = yaml.safe_load(open(pack_path)) or {}
+if gtpack.get("components") and not pack.get("components"):
+    pack["components"] = gtpack["components"]
+    with open(pack_path, "w") as fh:
+        yaml.safe_dump(pack, fh, sort_keys=False)
+PY
+  fi
+
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
   if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
