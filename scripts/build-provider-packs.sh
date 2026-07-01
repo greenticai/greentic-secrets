@@ -241,6 +241,67 @@ PY
     fi
   fi
 
+  # Align pack.yaml's components with gtpack.yaml. greentic-pack builds from
+  # pack.yaml (never gtpack.yaml), and its ComponentConfig requires each
+  # component to carry world/profiles/capabilities plus a BUNDLED `wasm` file —
+  # there is no OCI uri/source form in pack.yaml. The source pack.yaml ships
+  # `components: []`, so without this the pack's flow component refs are
+  # unresolvable (PACK_MISSING_COMPONENT_REFERENCE). Populate the components
+  # from gtpack.yaml, fill the required defaults (world from the provider
+  # extension), and bundle the locally-built wasm. All provider wasm is built
+  # above (dry-run and publish alike), so this no longer depends on wasm being
+  # skipped for cloud providers.
+  if [[ -f "${staging}/gtpack.yaml" && -f "${staging}/pack.yaml" && -f "${DIGESTS_JSON}" ]]; then
+    python3 - "${staging}/gtpack.yaml" "${staging}/pack.yaml" "${DIGESTS_JSON}" "${ROOT_DIR}/target/components" "${staging}" <<'PY'
+import json, os, shutil, sys, yaml
+
+gtpack_path, pack_path, digests_path, components_dir, staging_dir = sys.argv[1:6]
+gtpack = yaml.safe_load(open(gtpack_path)) or {}
+pack = yaml.safe_load(open(pack_path)) or {}
+
+if gtpack.get("components") and not pack.get("components"):
+    digests_by_id = {d["id"]: d for d in json.load(open(digests_path)) if d.get("id")}
+
+    # The component `world` comes from the pack's provider extension runtime.
+    provider_world = "greentic:provider/schema-core@1.0.0"
+    for extension in (pack.get("extensions") or {}).values():
+        inline = extension.get("inline") if isinstance(extension, dict) else None
+        providers = inline.get("providers") if isinstance(inline, dict) else None
+        if isinstance(providers, list) and providers:
+            runtime = providers[0].get("runtime") or {}
+            provider_world = runtime.get("world") or provider_world
+            break
+
+    dest_dir = os.path.join(staging_dir, "components")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    components = []
+    for comp in gtpack["components"]:
+        cid = comp.get("id")
+        digest = digests_by_id.get(cid)
+        wasm_name = str(digest.get("path", "")).strip() if digest else ""
+        src_wasm = os.path.join(components_dir, wasm_name)
+        if not (wasm_name and os.path.isfile(src_wasm)):
+            continue
+        shutil.copy2(src_wasm, os.path.join(dest_dir, wasm_name))
+        components.append({
+            "id": cid,
+            "version": comp.get("version"),
+            "world": provider_world,
+            "supports": [],
+            "profiles": {"default": "stateless", "supported": ["stateless"]},
+            "capabilities": {"wasi": {}, "host": {}},
+            "operations": [],
+            "wasm": f"components/{wasm_name}",
+        })
+
+    if components:
+        pack["components"] = components
+        with open(pack_path, "w") as fh:
+            yaml.safe_dump(pack, fh, sort_keys=False)
+PY
+  fi
+
   python3 "${ROOT_DIR}/scripts/generate-flow-resolve-summary.py" "${staging}" "${DIGESTS_JSON}"
 
   if [[ "${has_external_unresolved}" == "1" && "${use_local}" == "1" ]]; then
@@ -256,7 +317,8 @@ PY
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
     --bundle none \
     "${PACK_MODE_ARGS[@]}" \
-    --allow-oci-tags
+    --allow-oci-tags \
+    --allow-pack-schema
   if [[ "${SKIP_DOCTOR}" != "1" ]]; then
     greentic-pack doctor \
       --validate \
