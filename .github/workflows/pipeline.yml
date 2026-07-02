@@ -14,7 +14,11 @@ concurrency:
 
 env:
   RUST_VERSION: "1.95.0"
-  GREENTIC_PACK_REV: c3fe8aa
+  # greentic-pack 1.1.3 (v1.1.3 commit). Bumped off the stale c3fe8aa
+  # (v0.4.100, 2026-03-04) which failed `doctor --validate` on the
+  # OCI-referenced (`--bundle none`) provider packs with spurious
+  # PACK_MISSING_FILE. 1.1.x is the fleet-current pack tool.
+  GREENTIC_PACK_REV: 5b640e77673cf5c1d4b3f6649ee1d489bfa05dcf
 
 jobs:
   tools:
@@ -167,7 +171,11 @@ jobs:
           COMPONENTS_REGISTRY: ghcr.io/${{ github.repository_owner }}/components
           PACK_OFFLINE: "0"
           PACK_USE_LOCAL_COMPONENTS: auto
-          SKIP_DOCTOR: "1"
+          # Doctor now runs here too (previously SKIP_DOCTOR=1 hid the pack
+          # validation on PRs — which is exactly how the build-and-push-packs
+          # doctor failure went unnoticed). Keeping it on makes the PR gate
+          # catch pack-validation regressions before they reach the main-only
+          # publish job.
         run: ./scripts/build-provider-packs.sh
       - name: Validate provisioning fixtures
         run: ./scripts/validate-provision-fixtures.sh

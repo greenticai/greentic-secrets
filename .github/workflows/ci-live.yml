@@ -19,8 +19,12 @@ concurrency:
 
 jobs:
   aws:
+    # Live cloud tests are paid and need OIDC creds. On push, only run when the
+    # AWS creds are actually configured (empty vars -> skip, keeping main green).
+    # This skip cascades to azure/gcp via `needs: [aws]`. Manual dispatch with
+    # confirm=true always runs. Wire vars.AWS_ROLE_ARN/AWS_REGION to auto-enable.
     if: >
-      (github.event_name == 'push') ||
+      (github.event_name == 'push' && vars.AWS_ROLE_ARN != '' && vars.AWS_REGION != '') ||
       (github.event_name == 'workflow_dispatch' && inputs.confirm == true)
     runs-on: ubuntu-latest
     permissions:
