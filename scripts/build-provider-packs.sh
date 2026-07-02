@@ -315,7 +315,7 @@ PY
     --in "${staging}" \
     --lock "${LOCK_FILE}" \
     --gtpack-out "${OUT_DIR}/secrets-${slug}.gtpack" \
-    --bundle none \
+    --bundle cache \
     "${PACK_MODE_ARGS[@]}" \
     --allow-oci-tags \
     --allow-pack-schema
