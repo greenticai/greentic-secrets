@@ -112,75 +112,89 @@ struct Persistence {
 }
 
 impl Persistence {
-    fn load(path: PathBuf) -> Result<(State, Self)> {
-        let file = OpenOptions::new()
+    fn open_file(path: &PathBuf) -> Result<std::fs::File> {
+        OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&path)
+            .open(path)
+            .map_err(|err| Error::Storage(err.to_string()))
+    }
+
+    fn read_state(file: &std::fs::File) -> Result<State> {
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = line.map_err(|err| Error::Storage(err.to_string()))?;
+            if line.trim().is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            if let Some((key, value)) = line.split_once('=')
+                && key.trim() == ENV_KEY
+            {
+                let decoded = STANDARD_NO_PAD
+                    .decode(value.trim())
+                    .map_err(|err| Error::Storage(err.to_string()))?;
+                let persisted: PersistedState = serde_json::from_slice(&decoded)
+                    .map_err(|err| Error::Storage(err.to_string()))?;
+                return Ok(persisted.into_state());
+            }
+        }
+        Ok(State::default())
+    }
+
+    fn write_state(file: &std::fs::File, state: &State) -> Result<()> {
+        file.set_len(0)
+            .map_err(|err| Error::Storage(err.to_string()))?;
+        let mut file = file;
+        file.seek(SeekFrom::Start(0))
             .map_err(|err| Error::Storage(err.to_string()))?;
 
+        let persisted = PersistedState::from_state(state);
+        let json = serde_json::to_vec(&persisted).map_err(|err| Error::Storage(err.to_string()))?;
+        let encoded = STANDARD_NO_PAD.encode(json);
+
+        let mut writer = BufWriter::new(file);
+        writer
+            .write_all(format!("{ENV_KEY}={encoded}\n").as_bytes())
+            .map_err(|err| Error::Storage(err.to_string()))?;
+        writer
+            .flush()
+            .map_err(|err| Error::Storage(err.to_string()))?;
+        Ok(())
+    }
+
+    fn load(path: PathBuf) -> Result<(State, Self)> {
+        let file = Self::open_file(&path)?;
         file.lock_exclusive()
             .map_err(|err| Error::Storage(err.to_string()))?;
-
-        let result = (|| -> Result<State> {
-            let reader = BufReader::new(&file);
-            for line in reader.lines() {
-                let line = line.map_err(|err| Error::Storage(err.to_string()))?;
-                if line.trim().is_empty() || line.starts_with('#') {
-                    continue;
-                }
-
-                if let Some((key, value)) = line.split_once('=')
-                    && key.trim() == ENV_KEY
-                {
-                    let decoded = STANDARD_NO_PAD
-                        .decode(value.trim())
-                        .map_err(|err| Error::Storage(err.to_string()))?;
-                    let persisted: PersistedState = serde_json::from_slice(&decoded)
-                        .map_err(|err| Error::Storage(err.to_string()))?;
-                    return Ok(persisted.into_state());
-                }
-            }
-            Ok(State::default())
-        })();
-
+        let result = Self::read_state(&file);
         let _ = fs2::FileExt::unlock(&file);
         result.map(|state| (state, Self { path }))
     }
 
-    fn persist(&self, state: &State) -> Result<()> {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&self.path)
-            .map_err(|err| Error::Storage(err.to_string()))?;
-
+    /// Locked read-modify-write against the backing file: re-read the
+    /// persisted state under the exclusive lock, apply `mutate`, and write the
+    /// merged result back before releasing the lock.
+    ///
+    /// Every mutation MUST go through here rather than rewriting the file from
+    /// an instance's in-memory snapshot: several `DevBackend` instances (and
+    /// processes — setup and the runtime share one `.dev.secrets.env`) hold
+    /// the same file, and a blind rewrite from a snapshot loaded earlier
+    /// erases every write that landed since that load (observed as an OAuth
+    /// token vanishing from the store seconds after a verified write).
+    /// If `mutate` fails the file is left untouched.
+    fn update<T>(&self, mutate: impl FnOnce(&mut State) -> Result<T>) -> Result<(State, T)> {
+        let file = Self::open_file(&self.path)?;
         file.lock_exclusive()
             .map_err(|err| Error::Storage(err.to_string()))?;
 
-        let result = (|| -> Result<()> {
-            file.set_len(0)
-                .map_err(|err| Error::Storage(err.to_string()))?;
-            file.seek(SeekFrom::Start(0))
-                .map_err(|err| Error::Storage(err.to_string()))?;
-
-            let persisted = PersistedState::from_state(state);
-            let json =
-                serde_json::to_vec(&persisted).map_err(|err| Error::Storage(err.to_string()))?;
-            let encoded = STANDARD_NO_PAD.encode(json);
-
-            let mut writer = BufWriter::new(&file);
-            writer
-                .write_all(format!("{ENV_KEY}={encoded}\n").as_bytes())
-                .map_err(|err| Error::Storage(err.to_string()))?;
-            writer
-                .flush()
-                .map_err(|err| Error::Storage(err.to_string()))?;
-            Ok(())
+        let result = (|| -> Result<(State, T)> {
+            let mut state = Self::read_state(&file)?;
+            let value = mutate(&mut state)?;
+            Self::write_state(&file, &state)?;
+            Ok((state, value))
         })();
 
         let _ = fs2::FileExt::unlock(&file);
@@ -267,38 +281,58 @@ impl DevBackend {
             Ok(Self::new())
         }
     }
+}
 
-    fn persist_if_needed(&self, state: State) -> Result<()> {
-        if let Some(persistence) = &self.persistence {
-            persistence.persist(&state)?;
-        }
-        Ok(())
+fn put_into_state(state: &mut State, key: String, record: SecretRecord) -> SecretVersion {
+    let versions = state.entries.entry(key).or_default();
+    let next_version = versions.last().map(|v| v.version + 1).unwrap_or(1);
+    versions.push(VersionEntry::live(next_version, record));
+    SecretVersion {
+        version: next_version,
+        deleted: false,
     }
+}
+
+fn delete_from_state(state: &mut State, key: &str) -> Result<SecretVersion> {
+    let versions = match state.entries.get_mut(key) {
+        Some(versions) => versions,
+        None => {
+            return Err(Error::NotFound {
+                entity: key.to_string(),
+            });
+        }
+    };
+
+    let has_live = versions.iter().any(|entry| !entry.deleted);
+    if !has_live {
+        return Err(Error::NotFound {
+            entity: key.to_string(),
+        });
+    }
+
+    let next_version = versions.last().map(|v| v.version + 1).unwrap_or(1);
+    versions.push(VersionEntry::tombstone(next_version));
+    Ok(SecretVersion {
+        version: next_version,
+        deleted: true,
+    })
 }
 
 impl SecretsBackend for DevBackend {
     fn put(&self, record: SecretRecord) -> Result<SecretVersion> {
         let key = record.meta.uri.to_string();
-        let mut state_guard = self.state.write();
-        let versions = state_guard.entries.entry(key).or_default();
-        let next_version = versions.last().map(|v| v.version + 1).unwrap_or(1);
-
-        versions.push(VersionEntry::live(next_version, record));
-        let snapshot = if self.persistence.is_some() {
-            Some(state_guard.clone())
-        } else {
-            None
-        };
-        drop(state_guard);
-
-        if let Some(state) = snapshot {
-            self.persist_if_needed(state)?;
+        // Persistence-backed: mutate the FILE's current state under its lock
+        // (not this instance's possibly-stale snapshot), then refresh the
+        // in-memory view from the merged result. See `Persistence::update`.
+        if let Some(persistence) = &self.persistence {
+            let (merged, version) =
+                persistence.update(move |state| Ok(put_into_state(state, key, record)))?;
+            *self.state.write() = merged;
+            return Ok(version);
         }
 
-        Ok(SecretVersion {
-            version: next_version,
-            deleted: false,
-        })
+        let mut state_guard = self.state.write();
+        Ok(put_into_state(&mut state_guard, key, record))
     }
 
     fn get(&self, uri: &SecretUri, version: Option<u64>) -> Result<Option<VersionedSecret>> {
@@ -378,40 +412,16 @@ impl SecretsBackend for DevBackend {
 
     fn delete(&self, uri: &SecretUri) -> Result<SecretVersion> {
         let key = uri.to_string();
+        // Same locked read-merge-write as `put` — a tombstone written from a
+        // stale snapshot would erase other writers' secrets wholesale.
+        if let Some(persistence) = &self.persistence {
+            let (merged, version) = persistence.update(|state| delete_from_state(state, &key))?;
+            *self.state.write() = merged;
+            return Ok(version);
+        }
+
         let mut state_guard = self.state.write();
-        let versions = match state_guard.entries.get_mut(&key) {
-            Some(versions) => versions,
-            None => {
-                return Err(Error::NotFound {
-                    entity: uri.to_string(),
-                });
-            }
-        };
-
-        let has_live = versions.iter().any(|entry| !entry.deleted);
-        if !has_live {
-            return Err(Error::NotFound {
-                entity: uri.to_string(),
-            });
-        }
-
-        let next_version = versions.last().map(|v| v.version + 1).unwrap_or(1);
-        versions.push(VersionEntry::tombstone(next_version));
-        let snapshot = if self.persistence.is_some() {
-            Some(state_guard.clone())
-        } else {
-            None
-        };
-        drop(state_guard);
-
-        if let Some(state) = snapshot {
-            self.persist_if_needed(state)?;
-        }
-
-        Ok(SecretVersion {
-            version: next_version,
-            deleted: true,
-        })
+        delete_from_state(&mut state_guard, &key)
     }
 
     fn versions(&self, uri: &SecretUri) -> Result<Vec<SecretVersion>> {
@@ -619,7 +629,7 @@ mod tests {
             Persistence {
                 path: PathBuf::from(path),
             }
-            .persist(&State::default())
+            .update(|_| Ok(()))
             .unwrap();
             return;
         }
@@ -659,6 +669,73 @@ mod tests {
         assert!(status.success());
 
         DevBackend::with_persistence(&path).unwrap();
+        fs::remove_dir_all(&temp).unwrap();
+    }
+
+    #[test]
+    fn concurrent_instances_do_not_lose_each_others_writes() {
+        // The shape of the real deployment: setup and the runtime each hold
+        // their own DevBackend over ONE .dev.secrets.env. A write through an
+        // instance whose in-memory snapshot predates other writers' puts must
+        // merge with the file, not overwrite it (observed in the field as an
+        // OAuth token vanishing from the store seconds after a verified
+        // write, leaving a redaction placeholder to be sent as a credential).
+        let temp = std::env::temp_dir().join(format!(
+            "greentic-dev-lost-update-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&temp).unwrap();
+        let path = temp.join(".dev.secrets.env");
+
+        let scope = sample_scope();
+        let uri_a = sample_uri(&scope, "kv", "written-by-a");
+        let uri_b = sample_uri(&scope, "kv", "written-by-b");
+        let uri_shared = sample_uri(&scope, "kv", "shared");
+
+        // Both instances load while the file is empty; b's snapshot is stale
+        // for everything a writes afterwards.
+        let a = DevBackend::with_persistence(&path).unwrap();
+        let b = DevBackend::with_persistence(&path).unwrap();
+
+        a.put(record(&uri_a, ContentType::Text, b"a".to_vec()))
+            .unwrap();
+        let shared_v1 = a
+            .put(record(&uri_shared, ContentType::Text, b"s1".to_vec()))
+            .unwrap();
+        assert_eq!(shared_v1.version, 1);
+
+        b.put(record(&uri_b, ContentType::Text, b"b".to_vec()))
+            .unwrap();
+        // Version numbering must continue from the FILE's state, not b's
+        // stale snapshot (which never saw version 1).
+        let shared_v2 = b
+            .put(record(&uri_shared, ContentType::Text, b"s2".to_vec()))
+            .unwrap();
+        assert_eq!(shared_v2.version, 2, "version must continue from the file");
+
+        // A fresh instance (and b itself, post-write) must see every write.
+        let fresh = DevBackend::with_persistence(&path).unwrap();
+        assert!(
+            fresh.exists(&uri_a).unwrap(),
+            "a's write was lost by b's whole-file rewrite"
+        );
+        assert!(fresh.exists(&uri_b).unwrap());
+        assert!(
+            b.exists(&uri_a).unwrap(),
+            "a mutating instance must refresh its in-memory view from the merged file"
+        );
+
+        // Tombstones must merge the same way.
+        b.delete(&uri_a).unwrap();
+        let fresh = DevBackend::with_persistence(&path).unwrap();
+        assert!(!fresh.exists(&uri_a).unwrap());
+        assert!(fresh.exists(&uri_b).unwrap());
+        assert!(fresh.exists(&uri_shared).unwrap());
+
         fs::remove_dir_all(&temp).unwrap();
     }
 }
