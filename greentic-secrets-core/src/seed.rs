@@ -514,6 +514,41 @@ impl DevStore {
             inner: BrokerStore::new(broker),
         })
     }
+
+    /// Write a sanitized copy of the dev-store file at `src` to `dest`,
+    /// hard-removing every entry whose URI is in `exclude`.
+    ///
+    /// Unlike a tombstoning delete, an excluded URI leaves **no** ciphertext in
+    /// `dest`: the whole key is dropped before anything is written, so it cannot
+    /// be recovered from the raw bytes even by a holder of the store's master
+    /// key. Every other entry is carried over verbatim (records are never
+    /// decrypted). An `exclude` URI absent from `src` is a no-op.
+    ///
+    /// Transactional and lock-safe (see [`DevBackend::export_excluding`]): `src`
+    /// is read under its advisory lock and never modified; `dest` is published by
+    /// atomic rename, so it never transiently holds an excluded entry and a
+    /// failure leaves it untouched. `src` must exist and `dest` must be a fresh
+    /// path that does not resolve to `src`.
+    ///
+    /// The intended use is stripping control-plane material — e.g. a bound
+    /// deployer credential (`credentials_ref`) — from a store before it is staged
+    /// into an untrusted runtime seed, so the workload cannot read the credential
+    /// that deployed it.
+    pub fn copy_excluding(
+        src: &std::path::Path,
+        dest: &std::path::Path,
+        exclude: &[&str],
+    ) -> Result<()> {
+        use greentic_secrets_provider_dev::DevBackend;
+
+        let mut parsed = Vec::with_capacity(exclude.len());
+        for uri in exclude {
+            parsed.push(SecretUri::parse(uri)?);
+        }
+        let refs: Vec<&SecretUri> = parsed.iter().collect();
+        DevBackend::export_excluding(src, dest, &refs)
+            .map_err(|err| Error::Backend(err.to_string()))
+    }
 }
 
 #[cfg(feature = "dev-store")]
@@ -593,6 +628,113 @@ mod tests {
 
         let fetched = store.get("secrets://dev/acme/_/configs/db").await.unwrap();
         assert_eq!(fetched, b"secret".to_vec());
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "dev-store")]
+    async fn copy_excluding_strips_only_excluded_uris_leaving_src_intact() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join(".dev.secrets.env");
+        let dest = dir.path().join(".seed.secrets.env");
+
+        let cred = "secrets://dev/acme/_/kv/deployer-credential";
+        let runtime = "secrets://dev/acme/_/kv/runtime-token";
+        {
+            let store = DevStore::with_path(&src).unwrap();
+            store
+                .put(cred, SecretFormat::Text, b"SA-KEY")
+                .await
+                .unwrap();
+            store
+                .put(runtime, SecretFormat::Text, b"tok")
+                .await
+                .unwrap();
+        }
+
+        DevStore::copy_excluding(&src, &dest, &[cred]).unwrap();
+
+        // src is never modified — the operator's real store still holds both.
+        let src_store = DevStore::with_path(&src).unwrap();
+        assert_eq!(src_store.get(cred).await.unwrap(), b"SA-KEY");
+        assert_eq!(src_store.get(runtime).await.unwrap(), b"tok");
+
+        // dest resolves the runtime secret but NOT the excluded credential.
+        let dest_store = DevStore::with_path(&dest).unwrap();
+        assert_eq!(dest_store.get(runtime).await.unwrap(), b"tok");
+        assert!(
+            dest_store.get(cred).await.is_err(),
+            "excluded credential must not resolve from the staged copy"
+        );
+
+        // Decode the persisted state and assert the credential's key (and hence
+        // its record) is gone — a raw substring check is vacuous because the body
+        // is base64 and cannot contain the URI's hyphen.
+        let keys = persisted_dest_keys(&dest);
+        assert!(
+            !keys.iter().any(|key| key.contains("deployer-credential")),
+            "excluded credential must leave no key/ciphertext in the staged copy"
+        );
+        assert!(
+            keys.iter().any(|key| key.contains("runtime-token")),
+            "runtime secret must remain in the staged copy"
+        );
+    }
+
+    /// Decode a persisted dev-store file into the URI keys it holds on disk, so a
+    /// test can assert on residual ciphertext rather than base64 substrings.
+    #[cfg(feature = "dev-store")]
+    fn persisted_dest_keys(path: &std::path::Path) -> Vec<String> {
+        use base64::engine::general_purpose::STANDARD_NO_PAD;
+        let contents = std::fs::read_to_string(path).unwrap();
+        let encoded = contents
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("SECRETS_BACKEND_STATE="))
+            .expect("persisted state line");
+        let bytes = STANDARD_NO_PAD.decode(encoded.trim()).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        json["secrets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|secret| secret["key"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "dev-store")]
+    async fn copy_excluding_with_empty_exclusion_carries_every_entry() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join(".dev.secrets.env");
+        let dest = dir.path().join(".seed.secrets.env");
+        {
+            let store = DevStore::with_path(&src).unwrap();
+            store
+                .put("secrets://dev/acme/_/kv/alpha", SecretFormat::Text, b"1")
+                .await
+                .unwrap();
+            store
+                .put("secrets://dev/acme/_/kv/beta", SecretFormat::Text, b"2")
+                .await
+                .unwrap();
+        }
+
+        DevStore::copy_excluding(&src, &dest, &[]).unwrap();
+
+        let dest_store = DevStore::with_path(&dest).unwrap();
+        assert_eq!(
+            dest_store
+                .get("secrets://dev/acme/_/kv/alpha")
+                .await
+                .unwrap(),
+            b"1"
+        );
+        assert_eq!(
+            dest_store
+                .get("secrets://dev/acme/_/kv/beta")
+                .await
+                .unwrap(),
+            b"2"
+        );
     }
 
     #[test]
