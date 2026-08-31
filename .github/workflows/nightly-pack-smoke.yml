@@ -86,7 +86,7 @@ jobs:
       - name: Install greentic-pack + greentic-provision
         run: |
           cargo install --locked --git https://github.com/greenticai/greentic-pack.git --rev c3fe8aa greentic-pack --bin greentic-pack
-          cargo install cargo-binstall --locked
+          ( set -o pipefail; curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash )
           cargo binstall -y greentic-provision
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
