@@ -277,3 +277,11 @@ We publish workspace crates to crates.io via GitHub Actions:
 - You can automate the bump/tag/push flow with `scripts/release.sh X.Y.Z`, which runs `cargo workspaces version`, dry-run packaging, regenerates `CHANGELOG.md`, and pushes the release tag.
 
 Make sure the repository has the `CARGO_REGISTRY_TOKEN` secret set (crates.io → Account → New token).
+
+## Dev builds
+
+Every Dev Publish run on `develop` creates a GitHub prerelease tagged
+`v1.2.<run-id>` carrying prebuilt `greentic-secrets-dev` archives, which is what
+`gtc install --channel dev` installs. The binary inside reports that same
+`1.2.<run-id>` from `--version`, so any dev binary can be traced back to the
+release and the CI run that built it.
