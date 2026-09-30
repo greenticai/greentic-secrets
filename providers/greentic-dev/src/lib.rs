@@ -141,6 +141,21 @@ impl VersionEntry {
     }
 }
 
+/// Reduce every key to its latest live version, dropping a key whose latest
+/// version is a tombstone (it reads as absent, and its older versions still
+/// hold ciphertext). Used by [`DevBackend::export_excluding`] only; the
+/// operator's own store keeps its history.
+fn compact_to_latest(state: &mut State) {
+    state.entries.retain(|_, versions| match versions.pop() {
+        Some(latest) if !latest.deleted && latest.record.is_some() => {
+            versions.clear();
+            versions.push(latest);
+            true
+        }
+        _ => false,
+    });
+}
+
 #[derive(Clone)]
 struct Persistence {
     path: PathBuf,
@@ -358,6 +373,18 @@ impl DevBackend {
     /// directory-handle operations) is out of scope for this local-store staging
     /// primitive.
     ///
+    /// # History is not exported
+    ///
+    /// Every `put` APPENDS a version, so the source store grows by one encrypted
+    /// record per write (about a kilobyte each); a caller that re-stages the
+    /// same values on every deploy adds one record per key per deploy. A seed
+    /// only ever reads the current value, so the export carries each surviving
+    /// key's LATEST live version alone (keeping its version number) and drops a
+    /// key whose latest version is a tombstone. Shipping the history made the
+    /// staged payload grow without bound (a Cloud Run seed is a Secret Manager
+    /// version, capped at 64 KiB) and handed the workload every superseded
+    /// value of a rotated credential.
+    ///
     /// `src` must exist and `dest` must be a **fresh** path that does not yet
     /// exist and does not resolve to `src` — a pre-existing `dest` (including
     /// `src`, a symlink to it, or a file a live backend still holds open) is
@@ -394,6 +421,7 @@ impl DevBackend {
                 // risk dropping an unrelated runtime entry.
                 None => true,
             });
+        compact_to_latest(&mut state);
 
         let persisted = PersistedState::from_state(&state);
         let json = serde_json::to_vec(&persisted).map_err(|err| Error::Storage(err.to_string()))?;
@@ -1001,6 +1029,91 @@ mod tests {
                 .all(|key| !key.contains("deployer-credential")),
             "a versionless exclusion must strip a version-qualified stored key"
         );
+
+        fs::remove_dir_all(&temp).unwrap();
+    }
+
+    /// Decode the persisted blob and return the number of versions stored per key.
+    fn persisted_version_counts(path: &std::path::Path) -> Vec<(String, usize)> {
+        let contents = fs::read_to_string(path).unwrap();
+        let encoded = contents
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(&format!("{ENV_KEY}=")))
+            .expect("persisted state line");
+        let bytes = STANDARD_NO_PAD.decode(encoded.trim()).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        json["secrets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|secret| {
+                (
+                    secret["key"].as_str().unwrap().to_string(),
+                    secret["versions"].as_array().unwrap().len(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn export_excluding_ships_only_the_latest_version_of_each_key() {
+        // A caller that re-puts the same keys on every deploy grows the source
+        // by one record per key per deploy. The staged copy must not: it carries
+        // one version per key, and it is the CURRENT value.
+        let temp = unique_temp_dir("export-latest");
+        let src = temp.join(".dev.secrets.env");
+        let dest = temp.join(".seed.secrets.env");
+        let scope = sample_scope();
+        let token = sample_uri(&scope, "kv", "runtime-token");
+        let other = sample_uri(&scope, "kv", "other");
+        for round in 0..50u8 {
+            seed_store(&src, &[(&token, &[b'a' + (round % 26)]), (&other, b"same")]);
+        }
+        let src_size = fs::metadata(&src).unwrap().len();
+
+        DevBackend::export_excluding(&src, &dest, &[]).unwrap();
+
+        let counts = persisted_version_counts(&dest);
+        assert_eq!(counts.len(), 2, "both live keys survive: {counts:?}");
+        assert!(counts.iter().all(|(_, n)| *n == 1), "{counts:?}");
+        assert!(fs::metadata(&dest).unwrap().len() * 20 < src_size);
+
+        let reopened = DevBackend::with_persistence(&dest).unwrap();
+        let latest = reopened.get(&token, None).unwrap().expect("token resolves");
+        assert_eq!(latest.version, 50, "the version number is preserved");
+        assert_eq!(
+            latest.record.unwrap().value,
+            vec![b'a' + (49 % 26)],
+            "the staged value is the last one written"
+        );
+        assert!(
+            persisted_version_counts(&src).iter().all(|(_, n)| *n == 50),
+            "src keeps its history"
+        );
+
+        fs::remove_dir_all(&temp).unwrap();
+    }
+
+    #[test]
+    fn export_excluding_drops_a_key_whose_latest_version_is_a_tombstone() {
+        let temp = unique_temp_dir("export-tombstone");
+        let src = temp.join(".dev.secrets.env");
+        let dest = temp.join(".seed.secrets.env");
+        let scope = sample_scope();
+        let gone = sample_uri(&scope, "kv", "gone");
+        let kept = sample_uri(&scope, "kv", "kept");
+        seed_store(&src, &[(&gone, b"old"), (&kept, b"v")]);
+        let backend = DevBackend::with_persistence(&src).unwrap();
+        backend.delete(&gone).unwrap();
+        drop(backend);
+
+        DevBackend::export_excluding(&src, &dest, &[]).unwrap();
+        let keys = persisted_keys(&dest);
+        assert!(
+            !keys.contains(&gone.to_string()),
+            "a deleted key leaves no residual ciphertext in the export"
+        );
+        assert!(keys.contains(&kept.to_string()));
 
         fs::remove_dir_all(&temp).unwrap();
     }
