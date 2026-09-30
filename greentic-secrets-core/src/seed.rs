@@ -521,8 +521,9 @@ impl DevStore {
     /// Unlike a tombstoning delete, an excluded URI leaves **no** ciphertext in
     /// `dest`: the whole key is dropped before anything is written, so it cannot
     /// be recovered from the raw bytes even by a holder of the store's master
-    /// key. Every other entry is carried over verbatim (records are never
-    /// decrypted). An `exclude` URI absent from `src` is a no-op.
+    /// key. Every other key is carried over at its LATEST live version only
+    /// (records are never decrypted; superseded versions and deleted keys are
+    /// not exported). An `exclude` URI absent from `src` is a no-op.
     ///
     /// Transactional and lock-safe (see [`DevBackend::export_excluding`]): `src`
     /// is read under its advisory lock and never modified; `dest` is published by
