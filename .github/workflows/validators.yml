@@ -23,7 +23,13 @@ jobs:
           targets: wasm32-wasip2
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq rsync zip
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 300 sudo apt-get update && timeout 300 sudo apt-get install -y jq rsync zip; then break; fi
+            if [ "$attempt" -eq 3 ]; then echo "apt-get failed after 3 attempts" >&2; exit 1; fi
+            echo "apt-get attempt $attempt failed or timed out; retrying in 15s" >&2
+            sleep 15
+          done
 
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
